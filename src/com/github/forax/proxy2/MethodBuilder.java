@@ -12,17 +12,36 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collections;
 
+/**
+ * A builder-like class easing the creation of method handle-tree to specify
+ * implementation of a method.
+ */
 public class MethodBuilder {
   private MethodType sig;
   private MHTransformer transformer;
   
+  /**
+   * Implementation detail that should be hidden but currently visible because of the way the backport works.
+   */
   @FunctionalInterface
   public /*FIXME*/interface MHTransformer {
      MethodHandle transform(MethodHandle mh) throws NoSuchFieldException, IllegalAccessException;
   }
   
+  /**
+   * A function like {@link java.util.function.Function} but that allows to propagate reflective exception.
+   * @param <T> the type of the argument.
+   * @param <R> the type of the return value.
+   */
   @FunctionalInterface
   public interface Fun<T, R> {
+    /**
+     * Call the function.
+     * @param argument the argument of the function
+     * @return the return 
+     * @throws NoSuchFieldException throws if a field is not visible.
+     * @throws IllegalAccessException throws if a type or a member of a type is not visible.
+     */
     public R apply(T argument) throws NoSuchFieldException, IllegalAccessException;
   }
   
@@ -36,9 +55,24 @@ public class MethodBuilder {
     return this;
   }
   
+  /**
+   * Create a method builder with the signature of the implementation method should conform.
+   * @param methodType the method type that the {@link #thenCallMethodHandle(MethodHandle) resulting method handle}.
+   * @return a new method builder
+   */
   public static MethodBuilder methodBuilder(MethodType methodType) {
     return new MethodBuilder().apply(methodType, mh -> mh);
   }
+  
+  /**
+   * Create a method builder using the field types and the signature of the method taken as argument.
+   * @param method a method to implement.
+   * @param fieldTypes the field types of the proxy.
+   * @return the current method builder
+   * 
+   * @see Proxy2.ProxyHandler
+   * @see Proxy2#createAnonymousProxyFactory(MethodType, com.github.forax.proxy2.Proxy2.ProxyHandler)
+   */
   public static MethodBuilder methodBuilder(Method method, Class<?>... fieldTypes) {
     ArrayList<Class<?>> parameterTypes = new ArrayList<>();
     parameterTypes.add(Object.class);                                // prepend the proxy object type
@@ -47,48 +81,118 @@ public class MethodBuilder {
     return methodBuilder(MethodType.methodType(method.getReturnType(), parameterTypes));
   }
   
+  /**
+   * Ask to box all arguments into an array of java.lang.Object.
+   * @return the current method builder
+   */
   public MethodBuilder boxAllArguments() {
     MethodType sig = this.sig;
     MHTransformer transformer = this.transformer;
     return apply(MethodType.methodType(sig.returnType(), Object[].class), mh -> transformer.transform(mh.asCollector(Object[].class, sig.parameterCount()).asType(sig)));
   }
+  
+  /**
+   * Ask to insert a value at {@code parameterIndex}.
+   * @param parameterIndex position of the inserted value in the parameters
+   * @param type type of the inserted value
+   * @param value the value to insert
+   * @return the current method builder
+   */
   public MethodBuilder insertValueAt(int parameterIndex, Class<?> type, Object value) {
     MHTransformer transformer = this.transformer;
     return apply(sig.insertParameterTypes(parameterIndex, type), mh -> transformer.transform(insertArguments(mh, parameterIndex, value)));
   }
+  
+  /**
+   * Ask to drop the first parameter.
+   * @return the current method builder
+   * 
+   * @see #dropParameterAt(int)
+   */
   public MethodBuilder dropFirstParameter() {
     return dropParameterAt(0);
   }
+  
+  /**
+   * Ask to drop the parameter at {@code parameterIndex}
+   * @param parameterIndex position of the dropped parameter
+   * @return the current method builder
+   */
   public MethodBuilder dropParameterAt(int parameterIndex) {
     Class<?> type = sig.parameterType(parameterIndex);
     MHTransformer transformer = this.transformer;
     return apply(sig.dropParameterTypes(parameterIndex, parameterIndex + 1), mh -> transformer.transform(dropArguments(mh, parameterIndex, type)));
   }
+  
+  /**
+   * Ask to convert the parameter and the return value.
+   * @param methodType the expected type of the parameter and return type.
+   * @return the current method builder
+   */
   public MethodBuilder convertTo(MethodType methodType) {
     MHTransformer transformer = this.transformer;
     return apply(methodType, mh -> transformer.transform(mh.asType(methodType)));
   }
+  
+  /**
+   * Ask to convert the parameter and the return value.
+   * @param returnType the expected return type
+   * @param parameterTypes the expected parameter types
+   * @return the current method builder
+   * 
+   * @see #convertTo(MethodType)
+   */
   public MethodBuilder convertTo(Class<?> returnType, Class<?>... parameterTypes) {
     return convertTo(MethodType.methodType(returnType, parameterTypes));
   }
   
+  /**
+   * Ask to execute a code specified by a {@link MethodBuilder} before the current code.
+   * @param function a function that specify the code to execute before the current code,
+   *                 the method handle produced by the method builder must return void.
+   * @return the current method builder
+   */
   public MethodBuilder before(Fun<? super MethodBuilder, ? extends MethodHandle> function) {
     MethodType instrType = sig.changeReturnType(void.class);
     MHTransformer transformer = this.transformer;
     return apply(sig, mh -> transformer.transform(foldArguments(mh, function.apply(methodBuilder(instrType)))));
   }
+  
+  /**
+   * Ask to execute a code specified by a {@link MethodBuilder} after the current code.
+   * @param function a function that specify the code to execute after the current code,
+   *                 the method handle produced by the method builder is called with the return value
+   *                 of the current code as first parameter followed by the other parameters.
+   *                 The return value must be of the same type as the current code.
+   * @return the current method builder
+   */
   public MethodBuilder after(Fun<? super MethodBuilder, ? extends MethodHandle> function) {
     Class<?> returnType = sig.returnType();
     MethodType instrType = (returnType == void.class)?sig: sig.insertParameterTypes(0, returnType);
     MHTransformer transformer = this.transformer;
     return apply(sig, mh -> transformer.transform(foldArguments(function.apply(methodBuilder(instrType)), mh)));
   }
+  
+  /**
+   * Catch the exception of type {@code exceptionType} and execute the method handle returned as result
+   * of the {@code function}.
+   * @param exceptionType the type of the exception to catch.
+   * @param function a function that specify the code to execute when an exception is thrown.
+   *                 The method handle returned by the function must have the same signature as the current code.
+   * @return the current method builder
+   */
   public MethodBuilder trap(Class<? extends Throwable> exceptionType, Fun<? super MethodBuilder, ? extends MethodHandle> function) {
     MethodType instrType = sig.insertParameterTypes(0, exceptionType);
     MHTransformer transformer = this.transformer;
     return apply(sig, mh -> transformer.transform(catchException(mh, exceptionType, function.apply(methodBuilder(instrType)))));
   }
   
+  /**
+   * Create a method handle that will apply all transformations specified by the current method builder
+   * and then call the {@code target} method handle. 
+   * @param target the target method handle.
+   * @return a new method handle constructed by applying all transformations on the target method handle.
+   */
   public MethodHandle thenCallMethodHandle(MethodHandle target) throws NoSuchFieldException, IllegalAccessException {
     MethodType targetType = target.type();
     if (!targetType.equals(sig)) {
@@ -96,6 +200,14 @@ public class MethodBuilder {
     }
     return transformer.transform(target);
   }
+  
+  /**
+   * Create a method handle that will apply all transformations specified by the current method builder
+   * and then call the {@code method} method. 
+   * @param lookup the lookup object used to find the @code method}
+   * @param method the method called at the end of the transformation.
+   * @return a new method handle constructed by applying all transformations on the target method.
+   */
   public MethodHandle thenCall(Lookup lookup, Method method) throws NoSuchFieldException, IllegalAccessException {
     MethodHandle target = lookup.unreflect(method);
     MethodType targetType = target.type();
@@ -109,9 +221,21 @@ public class MethodBuilder {
     }
     return thenCallMethodHandle(target);
   }
+  
+  /**
+   * Create a method handle that will apply all transformations specified by the current method builder
+   * and then return the value passed as argument.
+   * @return a new method handle constructed by applying all transformations on the identity.
+   */
   public MethodHandle thenCallIdentity() throws NoSuchFieldException, IllegalAccessException {
     return thenCallMethodHandle(identity(sig.parameterType(0)));
   }
+  
+  /**
+   * Create a method handle that will apply all transformations specified by the current method builder
+   * and then return the constant value taken as argument of this method.
+   * @return a new method handle constructed by applying all transformations on the identity.
+   */
   public MethodHandle thenCallAndReturnAConstant(Object value) throws NoSuchFieldException, IllegalAccessException {
     return thenCallMethodHandle(constant(sig.parameterType(0), value));
   }

@@ -36,24 +36,90 @@ import org.objectweb.asm.Type;
 
 import sun.misc.Unsafe;
 
-@SuppressWarnings("restriction")
+/**
+ * A bunch of static factory methods to create proxy factories.
+ * 
+ * Unlike java.lang.reflect.Proxy, the implementation doesn't do any caching,
+ * so calling {@link #createAnonymousProxyFactory(MethodType, ProxyHandler)}
+ * with the same interface as return type of the method type will generated
+ * as many proxy classes as the number of calls.
+ */
 public class Proxy2 {
+  /**
+   * Spoecify how to link a proxy method to its implementation. 
+   */
   public interface ProxyHandler {
+    /**
+     * Returns true if the method should be overridden by the proxy.
+     * This method is only called for method that have an existing implementation
+     * (default methods or Object's toString(), equals() and hashCode().
+     * This method is called once by method when generating the proxy call.
+     * 
+     * @param method a method of the interface that may be overridden
+     * @return true if the method should be overridden by the proxy.
+     */
     public boolean override(Method method);
+    
+    /**
+     * Called to link a proxy method to a target method handle (through a callsite's target).
+     * This method is called once by method at runtime the first time the proxy method is called.
+     * 
+     * @param lookup lookup object corresponding to the interface of the proxy.
+     * @param method the method object to link.
+     * @return a callsite object indicating how to link the method to a target method handle.
+     * @throws Throwable if any errors occur.
+     */
     public CallSite bootstrap(Lookup lookup, Method method) throws Throwable;
   }
 
+  /**
+   * A factory of proxy implementing an interface.
+   * 
+   * @param <T> the type of the proxy interface.
+   * @see Proxy2#createAnonymousProxyFactory(Class, Class[], ProxyHandler)
+   */
   @FunctionalInterface
   public interface ProxyFactory<T> {
+    /**
+     * Create a proxy with a value for each field of the proxy.
+     * @param fieldValues the value of each field of the proxy. 
+     * @return a new proxy instance.
+     */
     public T create(Object... fieldValues);
   }
   
   private static final Class<?>[] EMPTY_FIELD_TYPES = new Class<?>[0];
 
+  /**
+   * Create a factory that will create anonymous proxy instances implementing an interface {@code type} and no field.
+   * The {@code handler} is used to specify the linking between a method and its implementation.
+   * The created proxy class will define no field so {@link ProxyFactory#create(Object...)} should be called with no argument.
+   * 
+   * @param type the interface that the proxy should respect.
+   * @param handler an interface that specifies how a proxy method is linked to its implementation.
+   * @return a proxy factory that will create proxy instance.
+   * 
+   * @see #createAnonymousProxyFactory(Class, Class[], ProxyHandler)
+   */
   public static <T> ProxyFactory<T> createAnonymousProxyFactory(Class<? extends T> type, ProxyHandler handler) {
     return createAnonymousProxyFactory(type, EMPTY_FIELD_TYPES, handler);
   }
 
+  /**
+   * Create a factory that will create anonymous proxy instances implementing an interface {@code type}
+   * and with several fields described by {@code fieldTypes}.
+   * The {@code handler} is used to specify the linking between a method and its implementation.
+   * The created proxy class will define several fields so {@link ProxyFactory#create(Object...)} should be called with
+   * the values of the field as argument.
+   * 
+   * @param type the interface that the proxy should respect.
+   * @param fieldTypes type of the fields of the generated proxy.
+   * @param handler an interface that specifies how a proxy method is linked to its implementation.
+   * @return a proxy factory that will create proxy instance.
+   * 
+   * @see #createAnonymousProxyFactory(MethodType, ProxyHandler)
+   * @see #createAnonymousProxyFactory(Class, ProxyHandler)
+   */
   public static <T> ProxyFactory<T> createAnonymousProxyFactory(Class<? extends T> type, Class<?>[] fieldTypes, ProxyHandler handler) {
     MethodHandle mh = createAnonymousProxyFactory(MethodType.methodType(type, fieldTypes), handler);
     return new ProxyFactory<T>() {   // don't use a lambda here to avoid cycle when retro-weaving
@@ -104,6 +170,22 @@ public class Proxy2 {
   //private static final String PROXY_NAME = "com/github/forax/proxy2/Foo";
   private static final String PROXY_NAME = "java/lang/invoke/Foo";
   
+  /**
+   * Create a factory that will create anonymous proxy instances with several fields described by
+   * the parameter types of {@code methodType} and implementing an interface described by
+   * the return type of {@code methodType}.
+   * The {@code handler} is used to specify the linking between a method and its implementation.
+   * The returned {@link MethodHandle} will have its type being equals to the {@code methodType}
+   * taken as argument.
+   * 
+   * @param methodType the parameter types of this {@link MethodType} described the type of the fields
+   *                   and the return type the interface implemented by the proxy. 
+   * @param handler an interface that specifies how a proxy method is linked to its implementation.
+   * @return a method handle that if {@link MethodHandle#invokeExact(Object...) called} will create
+   *         a proxy instance of a class implementing the return interfaces. 
+   * 
+   * @see #createAnonymousProxyFactory(Class, Class[], ProxyHandler)
+   */
   public static MethodHandle createAnonymousProxyFactory(MethodType methodType, ProxyHandler handler) {
     Class<?> interfaze = methodType.returnType();
     if (!Modifier.isPublic(interfaze.getModifiers())) {
@@ -216,6 +298,9 @@ public class Proxy2 {
           MethodType.methodType(CallSite.class, Lookup.class, String.class, MethodType.class, ProxyHandler.class, Method.class).toMethodDescriptorString());
 
   // should be package-private but invokedynamic doesn't honor anonymous host class visibility 
+  /**
+   * Internal Entry point, should never called directly.
+   */
   public static CallSite bootstrap(Lookup lookup, String name, MethodType methodType, ProxyHandler handler, Method method) throws Throwable {
     return handler.bootstrap(MethodHandles.publicLookup(), method);
   }
