@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="proxy2" default="dist">
+    <description>
+        proxy2: better proxy
+    </description>
+
+	  <property name="asm.jar" location="lib/asm-5.0.3.jar"/>
+	  <property name="asm-commons.jar" location="lib/asm-commons-5.0.3.jar"/>
+
+    <target name="dist" depends="classic, retro">      
+    </target>
+
+	  <target name="classic" depends="jar">
+	    <java classname="com.github.forax.proxy2.rewriter.Retro"
+	          classpath="${asm.jar}:${asm-commons.jar}:output/build/classes">
+	    	<arg line="output/proxy2-classic.jar proxy2.jar"/>
+	    </java>
+	  </target>
+	
+	  <target name="retro" depends="jar">
+	    <java classname="com.github.forax.proxy2.rewriter.Retro"
+	  	      classpath="${asm.jar}:${asm-commons.jar}:output/build/classes">
+	    	<arg line="output/proxy2-retro.jar proxy2-backport7.jar -retro" />
+	    </java>
+	  </target>
+	
+	  <target name="jar" depends="compile">
+	  	<unzip src="${asm.jar}" dest="output/classes" />
+	  	<delete dir="output/classes/META-INF/"/>
+	  	<delete>
+	  	    <fileset dir="output/classes/org/objectweb/asm" includes="**/*Test*"/>
+	  	</delete>
+	  	
+	  	<jar basedir="output/classes" destfile="output/proxy2-classic.jar" />
+	  	
+	  	<copy file="output/build/classes/com/github/forax/proxy2/RetroRT.class"
+	  	      todir="output/classes/com/github/forax/proxy2/" />
+	  	<copy file="output/build/classes/com/github/forax/proxy2/RetroRT$LambdaProxyHandler.class"
+	  	      todir="output/classes/com/github/forax/proxy2/" />
+	    <jar basedir="output/classes" destfile="output/proxy2-retro.jar" />
+	  </target>
+	
+    <target name="compile">
+    	<delete dir="output"/>
+    	<mkdir dir="output"/>
+    	<mkdir dir="output/classes"/>
+      <javac srcdir="src"
+             destdir="output/classes"
+             classpath="${asm.jar}"
+             debug="on"
+      	     includeantruntime="no"
+	    />
+    	<mkdir dir="output/build"/>
+    	<mkdir dir="output/build/classes"/>
+    	<javac srcdir="build/src"
+    	       destdir="output/build/classes"
+    	       classpath="${asm.jar}:${asm-commons.jar}:output/classes"
+    	       debug="on"
+    		     includeantruntime="no"
+      />
+    	<mkdir dir="output/demo"/>
+    	<mkdir dir="output/demo/classes"/>
+    	<javac srcdir="demo/src"
+    	       destdir="output/demo/classes"
+    	       classpath="output/classes"
+    		     source="1.7"
+    		     target="1.7"
+    	       debug="on"
+    	       includeantruntime="no"
+    	/>
+    </target>
+
+</project>

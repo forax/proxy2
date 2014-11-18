@@ -1,4 +1,6 @@
-proxy2
-======
+Proxy 2.0
+=========
 
-better / faster proxy than java.lang.reflect.Proxy for Java (require 1.7)
+Better / faster proxy generator than java.lang.reflect.Proxy for Java (require 1.7)
+
+
