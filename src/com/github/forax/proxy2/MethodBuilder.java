@@ -25,7 +25,7 @@ public class MethodBuilder {
    */
   @FunctionalInterface
   public /*FIXME*/interface MHTransformer {
-     MethodHandle transform(MethodHandle mh) throws NoSuchFieldException, IllegalAccessException;
+     MethodHandle transform(MethodHandle mh) throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException;
   }
   
   /**
@@ -39,10 +39,11 @@ public class MethodBuilder {
      * Call the function.
      * @param argument the argument of the function
      * @return the return 
+     * @throws NoSuchMethodException throws is a method is not visible.
      * @throws NoSuchFieldException throws if a field is not visible.
      * @throws IllegalAccessException throws if a type or a member of a type is not visible.
      */
-    public R apply(T argument) throws NoSuchFieldException, IllegalAccessException;
+    public R apply(T argument) throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException;
   }
   
   private MethodBuilder() {
@@ -192,8 +193,11 @@ public class MethodBuilder {
    * and then call the {@code target} method handle. 
    * @param target the target method handle.
    * @return a new method handle constructed by applying all transformations on the target method handle.
+   * @throws NoSuchMethodException throws is a method is not visible.
+   * @throws NoSuchFieldException throws if a field is not visible.
+   * @throws IllegalAccessException throws if a type or a member of a type is not visible.
    */
-  public MethodHandle thenCallMethodHandle(MethodHandle target) throws NoSuchFieldException, IllegalAccessException {
+  public MethodHandle thenCallMethodHandle(MethodHandle target) throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
     MethodType targetType = target.type();
     if (!targetType.equals(sig)) {
       throw new WrongMethodTypeException("target type " + targetType + " is not equals to current type " + sig);
@@ -204,11 +208,16 @@ public class MethodBuilder {
   /**
    * Create a method handle that will apply all transformations specified by the current method builder
    * and then call the {@code method} method. 
+   * This method uses a cache if the method is a virtual method (either on class or interface)
+   * 
    * @param lookup the lookup object used to find the @code method}
    * @param method the method called at the end of the transformation.
    * @return a new method handle constructed by applying all transformations on the target method.
+   * @throws NoSuchMethodException throws is a method is not visible.
+   * @throws NoSuchFieldException throws if a field is not visible.
+   * @throws IllegalAccessException throws if a type or a member of a type is not visible.
    */
-  public MethodHandle thenCall(Lookup lookup, Method method) throws NoSuchFieldException, IllegalAccessException {
+  public MethodHandle thenCall(Lookup lookup, Method method) throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
     MethodHandle target = lookup.unreflect(method);
     MethodType targetType = target.type();
     if (!targetType.equals(sig)) {
@@ -226,8 +235,12 @@ public class MethodBuilder {
    * Create a method handle that will apply all transformations specified by the current method builder
    * and then return the value passed as argument.
    * @return a new method handle constructed by applying all transformations on the identity.
+   * 
+   * @throws NoSuchMethodException throws is a method is not visible.
+   * @throws NoSuchFieldException throws if a field is not visible.
+   * @throws IllegalAccessException throws if a type or a member of a type is not visible.
    */
-  public MethodHandle thenCallIdentity() throws NoSuchFieldException, IllegalAccessException {
+  public MethodHandle thenCallIdentity() throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
     return thenCallMethodHandle(identity(sig.parameterType(0)));
   }
   
@@ -235,8 +248,11 @@ public class MethodBuilder {
    * Create a method handle that will apply all transformations specified by the current method builder
    * and then return the constant value taken as argument of this method.
    * @return a new method handle constructed by applying all transformations on the identity.
+   * @throws NoSuchMethodException throws is a method is not visible.
+   * @throws NoSuchFieldException throws if a field is not visible.
+   * @throws IllegalAccessException throws if a type or a member of a type is not visible.
    */
-  public MethodHandle thenCallAndReturnAConstant(Object value) throws NoSuchFieldException, IllegalAccessException {
+  public MethodHandle thenCallAndReturnAConstant(Object value) throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
     return thenCallMethodHandle(constant(sig.parameterType(0), value));
   }
   

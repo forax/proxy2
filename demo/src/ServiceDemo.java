@@ -50,7 +50,7 @@ public class ServiceDemo {
               .dropFirstParameter()
               .before(new Fun<MethodBuilder, MethodHandle>() {
                 @Override
-                public MethodHandle apply(MethodBuilder b) throws NoSuchFieldException, IllegalAccessException {
+                public MethodHandle apply(MethodBuilder b) throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
                   return b.dropFirstParameter().boxAllArguments().thenCallMethodHandle(intercept);
                 }
               }) 
