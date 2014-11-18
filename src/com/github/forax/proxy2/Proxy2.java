@@ -193,7 +193,7 @@ public class Proxy2 {
     }
 
     ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES|ClassWriter.COMPUTE_MAXS);
-    writer.visit(V1_7, ACC_PUBLIC|ACC_SUPER, PROXY_NAME, null, "java/lang/Object", new String[]{ internalName(interfaze) });
+    writer.visit(V1_7, ACC_PUBLIC|ACC_SUPER|ACC_FINAL, PROXY_NAME, null, "java/lang/Object", new String[]{ internalName(interfaze) });
 
     String initDesc;
     {
