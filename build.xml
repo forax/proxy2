@@ -68,6 +68,14 @@
     	       debug="on"
     	       includeantruntime="no"
     	/>
+    	<mkdir dir="output/demo8"/>
+    	<mkdir dir="output/demo8/classes"/>
+    	<javac srcdir="demo8/src"
+    	       destdir="output/demo8/classes"
+    	       classpath="output/classes"
+    	       debug="on"
+    	       includeantruntime="no"
+    	/>
     </target>
 
 </project>
