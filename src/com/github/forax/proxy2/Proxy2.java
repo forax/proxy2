@@ -40,13 +40,17 @@ import sun.misc.Unsafe;
  * A bunch of static factory methods to create proxy factories.
  * 
  * Unlike java.lang.reflect.Proxy, the implementation doesn't do any caching,
- * so calling {@link #createAnonymousProxyFactory(MethodType, ProxyHandler)}
+ * so calling {@link #createAnonymousProxyFactory(Lookup, MethodType, ProxyHandler)}
  * with the same interface as return type of the method type will generated
  * as many proxy classes as the number of calls.
  */
 public class Proxy2 {
+  private Proxy2() {
+    // no instance
+  }
+  
   /**
-   * Spoecify how to link a proxy method to its implementation. 
+   * Specify how to link a proxy method to its implementation. 
    */
   public interface ProxyHandler {
     /**
@@ -117,11 +121,11 @@ public class Proxy2 {
    * @param handler an interface that specifies how a proxy method is linked to its implementation.
    * @return a proxy factory that will create proxy instance.
    * 
-   * @see #createAnonymousProxyFactory(MethodType, ProxyHandler)
+   * @see #createAnonymousProxyFactory(Lookup, MethodType, ProxyHandler)
    * @see #createAnonymousProxyFactory(Class, ProxyHandler)
    */
   public static <T> ProxyFactory<T> createAnonymousProxyFactory(Class<? extends T> type, Class<?>[] fieldTypes, ProxyHandler handler) {
-    MethodHandle mh = createAnonymousProxyFactory(MethodType.methodType(type, fieldTypes), handler);
+    MethodHandle mh = createAnonymousProxyFactory(MethodHandles.publicLookup(), MethodType.methodType(type, fieldTypes), handler);
     return new ProxyFactory<T>() {   // don't use a lambda here to avoid cycle when retro-weaving
       @Override
       public T create(Object... fieldValues) {
@@ -178,6 +182,8 @@ public class Proxy2 {
    * The returned {@link MethodHandle} will have its type being equals to the {@code methodType}
    * taken as argument.
    * 
+   * @param lookup access token used to access to the interface methods, this object will be passed
+   *               as first parameter of the proxy {@code handler}.
    * @param methodType the parameter types of this {@link MethodType} described the type of the fields
    *                   and the return type the interface implemented by the proxy. 
    * @param handler an interface that specifies how a proxy method is linked to its implementation.
@@ -186,10 +192,10 @@ public class Proxy2 {
    * 
    * @see #createAnonymousProxyFactory(Class, Class[], ProxyHandler)
    */
-  public static MethodHandle createAnonymousProxyFactory(MethodType methodType, ProxyHandler handler) {
+  public static MethodHandle createAnonymousProxyFactory(Lookup lookup, MethodType methodType, ProxyHandler handler) {
     Class<?> interfaze = methodType.returnType();
-    if (!Modifier.isPublic(interfaze.getModifiers())) {
-      throw new UnsupportedOperationException("interface not public " + interfaze);
+    if (lookup.in(interfaze).lookupModes() == 0) {
+      throw new UnsupportedOperationException("interface " + interfaze + " is not visible from " + lookup);
     }
 
     ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES|ClassWriter.COMPUTE_MAXS);
@@ -235,6 +241,8 @@ public class Proxy2 {
       factory.visitEnd();
     }
 
+    String lookupPlaceHolder = "<<LOOKUP_HOLDER>>";
+    int lookupHolderCPIndex = writer.newConst(lookupPlaceHolder);
     String handlerPlaceHolder = "<<HANDLER_HOLDER>>";
     int handlerHolderCPIndex = writer.newConst(handlerPlaceHolder);
 
@@ -269,7 +277,7 @@ public class Proxy2 {
       methodHolderCPIndexes[methodIndex] = writer.newConst(methodPlaceHolder);
       mv.visitInvokeDynamicInsn(method.getName(),
           "(Ljava/lang/Object;" + initDesc.substring(1, initDesc.length() - 2) + methodDesc.substring(1),
-          BSM, handlerPlaceHolder, methodPlaceHolder);
+          BSM, handlerPlaceHolder, lookupPlaceHolder, methodPlaceHolder);
       mv.visitInsn(Type.getReturnType(method).getOpcode(IRETURN));
       mv.visitMaxs(-1, -1);
       mv.visitEnd();
@@ -280,11 +288,12 @@ public class Proxy2 {
     int constantPoolSize = writer.newConst("<<SENTINEL>>");
 
     Object[] patches = new Object[constantPoolSize];
+    patches[lookupHolderCPIndex] = lookup;
     patches[handlerHolderCPIndex] = handler;
     for(int i = 0; i < methodHolderCPIndexes.length; i++) {
       patches[methodHolderCPIndexes[i]] = methods[i];
     }
-    Class<?> clazz = UNSAFE.defineAnonymousClass(Proxy2.class, data, patches);
+    Class<?> clazz = UNSAFE.defineAnonymousClass(interfaze /*Proxy2.class*/, data, patches);
     UNSAFE.ensureClassInitialized(clazz);
     try {
       return MethodHandles.publicLookup().findStatic(clazz, "0-^-0", methodType);
@@ -295,13 +304,12 @@ public class Proxy2 {
 
   private static final Handle BSM =
       new Handle(H_INVOKESTATIC, internalName(Proxy2.class), "bootstrap",
-          MethodType.methodType(CallSite.class, Lookup.class, String.class, MethodType.class, ProxyHandler.class, Method.class).toMethodDescriptorString());
+          MethodType.methodType(CallSite.class, Lookup.class, String.class, MethodType.class, ProxyHandler.class, Lookup.class, Method.class).toMethodDescriptorString());
 
-  // should be package-private but invokedynamic doesn't honor anonymous host class visibility 
   /**
    * Internal Entry point, should never called directly.
    */
-  public static CallSite bootstrap(Lookup lookup, String name, MethodType methodType, ProxyHandler handler, Method method) throws Throwable {
-    return handler.bootstrap(MethodHandles.publicLookup(), method);
+  public static CallSite bootstrap(Lookup lookup, String name, MethodType methodType, ProxyHandler handler, Lookup interfaceLookup, Method method) throws Throwable {
+    return handler.bootstrap(interfaceLookup, method);
   }
 }

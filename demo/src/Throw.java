@@ -24,6 +24,8 @@ public class Throw {
 
         @Override
         public CallSite bootstrap(Lookup lookup, Method method) throws Throwable {
+          System.out.println("bootstrap");
+          
           MethodHandle target = methodBuilder(method, Runnable.class)    // configure the builder
               .dropFirstParameter()                                      // remove the proxy object
               .thenCall(lookup, method);                                 // call the method
@@ -34,7 +36,7 @@ public class Throw {
     Runnable runnable = new Runnable() {
       @Override
       public void run() {
-        throw null;
+        //throw null;
       }
     };
     

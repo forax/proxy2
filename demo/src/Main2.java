@@ -3,9 +3,11 @@ import static com.github.forax.proxy2.MethodBuilder.methodBuilder;
 import java.lang.invoke.CallSite;
 import java.lang.invoke.ConstantCallSite;
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.UndeclaredThrowableException;
 
 import com.github.forax.proxy2.Proxy2;
@@ -20,7 +22,7 @@ public class Main2 {
       new ClassValue<MethodHandle>() {
         @Override
         protected MethodHandle computeValue(final Class<?> type) {
-          return Proxy2.createAnonymousProxyFactory(MethodType.methodType(type, type), 
+          return Proxy2.createAnonymousProxyFactory(MethodHandles.publicLookup(), MethodType.methodType(type, type), 
               new ProxyHandler() {
                 @Override
                 public boolean override(Method method) { return true; }
@@ -37,6 +39,9 @@ public class Main2 {
       };
   
   private static <T> T proxy(T delegate, Class<T> interfaze) {
+    /*if (!Modifier.isPublic(interfaze.getModifiers())) {
+      throw new IllegalArgumentException(interfaze + " should be public");
+    }*/
     try {
       return interfaze.cast(FACTORY_CACHE.get(interfaze).invoke(delegate));
     } catch(RuntimeException | Error e) {
