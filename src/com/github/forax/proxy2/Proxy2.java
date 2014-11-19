@@ -155,18 +155,16 @@ public class Proxy2 {
     return array;
   }
   
-  //private static final String PROXY_NAME = "com/github/forax/proxy2/Foo";
-  private static final String PROXY_NAME;
+  private static final boolean IS_1_8;
   static {
-    String proxyName;
+    boolean is1_8;
     try {
       Class.forName("java.util.Spliterator");  // 1.8 ?
-      proxyName = "java/lang/invoke/Foo";
+      is1_8 = true;
     } catch (ClassNotFoundException e) {
-      // proxy can not be in java.lang.invoke without crashing with OpenJDK 1.7 !
-      proxyName = "com/github/forax/proxy2/Foo";
+      is1_8 = false;
     }
-    PROXY_NAME = proxyName;
+    IS_1_8 = is1_8;
   }
   
   /**
@@ -193,8 +191,13 @@ public class Proxy2 {
       throw new UnsupportedOperationException("interface " + interfaze + " is not visible from " + lookup);
     }
 
+    // if the proxy is in java.lang.invoke and the interface is not visible, the OpenJDK 7 VM crashes !
+    String proxyName = (!IS_1_8 && !Modifier.isPublic(interfaze.getModifiers()))?
+        "com/github/forax/proxy2/Foo":   
+        "java/lang/invoke/Foo";
+    
     ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES|ClassWriter.COMPUTE_MAXS);
-    writer.visit(V1_7, ACC_PUBLIC|ACC_SUPER|ACC_FINAL, PROXY_NAME, null, "java/lang/Object", new String[]{ internalName(interfaze) });
+    writer.visit(V1_7, ACC_PUBLIC|ACC_SUPER|ACC_FINAL, proxyName, null, "java/lang/Object", new String[]{ internalName(interfaze) });
 
     String initDesc;
     {
@@ -206,7 +209,7 @@ public class Proxy2 {
       init.visitVarInsn(ALOAD, 0);
       init.visitMethodInsn(INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
       factory.visitCode();
-      factory.visitTypeInsn(NEW, PROXY_NAME);
+      factory.visitTypeInsn(NEW, proxyName);
       factory.visitInsn(DUP);
 
       int slot = 1;
@@ -219,7 +222,7 @@ public class Proxy2 {
         int loadOp = Type.getType(boundType).getOpcode(ILOAD);
         init.visitVarInsn(ALOAD, 0);
         init.visitVarInsn(loadOp, slot);
-        init.visitFieldInsn(PUTFIELD, PROXY_NAME, fieldName, Type.getDescriptor(boundType));
+        init.visitFieldInsn(PUTFIELD, proxyName, fieldName, Type.getDescriptor(boundType));
 
         factory.visitVarInsn(loadOp, slot - 1);
 
@@ -227,7 +230,7 @@ public class Proxy2 {
       }
 
       init.visitInsn(RETURN);
-      factory.visitMethodInsn(INVOKESPECIAL, PROXY_NAME, "<init>", initDesc, false);
+      factory.visitMethodInsn(INVOKESPECIAL, proxyName, "<init>", initDesc, false);
       factory.visitInsn(ARETURN);
 
       init.visitMaxs(-1, -1);
@@ -239,6 +242,10 @@ public class Proxy2 {
     String mhPlaceHolder = "<<MH_HOLDER>>";
     int mhHolderCPIndex = writer.newConst(mhPlaceHolder);
 
+    Handle BSM =
+        new Handle(H_INVOKESTATIC, proxyName, "bsm",
+            MethodType.methodType(CallSite.class, Lookup.class, String.class, MethodType.class,
+                MethodHandle.class, Method.class).toMethodDescriptorString());
     { // bsm
       MethodVisitor mv = writer.visitMethod(ACC_PRIVATE|ACC_STATIC, "bsm", BSM.getDesc(), null, null);
       mv.visitCode();
@@ -271,7 +278,7 @@ public class Proxy2 {
       for(int i = 0; i < methodType.parameterCount(); i++) {
         Class<?> fieldType = methodType.parameterType(i);
         mv.visitVarInsn(ALOAD, 0);
-        mv.visitFieldInsn(GETFIELD, PROXY_NAME, "arg" + i, Type.getDescriptor(fieldType));
+        mv.visitFieldInsn(GETFIELD, proxyName, "arg" + i, Type.getDescriptor(fieldType));
       }
       int slot = 1;
       for(Class<?> parameterType: method.getParameterTypes()) {
@@ -316,9 +323,4 @@ public class Proxy2 {
       throw new AssertionError(e);
     }
   }
-  
-  private static final Handle BSM =
-      new Handle(H_INVOKESTATIC, PROXY_NAME, "bsm",
-          MethodType.methodType(CallSite.class, Lookup.class, String.class, MethodType.class,
-              MethodHandle.class, Method.class).toMethodDescriptorString());
 }
