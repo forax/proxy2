@@ -1,22 +1,6 @@
 package com.github.forax.proxy2;
 
-import static org.objectweb.asm.Opcodes.ACC_FINAL;
-import static org.objectweb.asm.Opcodes.ACC_PRIVATE;
-import static org.objectweb.asm.Opcodes.ACC_PUBLIC;
-import static org.objectweb.asm.Opcodes.ACC_STATIC;
-import static org.objectweb.asm.Opcodes.ACC_SUPER;
-import static org.objectweb.asm.Opcodes.ALOAD;
-import static org.objectweb.asm.Opcodes.ARETURN;
-import static org.objectweb.asm.Opcodes.DUP;
-import static org.objectweb.asm.Opcodes.GETFIELD;
-import static org.objectweb.asm.Opcodes.H_INVOKESTATIC;
-import static org.objectweb.asm.Opcodes.ILOAD;
-import static org.objectweb.asm.Opcodes.INVOKESPECIAL;
-import static org.objectweb.asm.Opcodes.IRETURN;
-import static org.objectweb.asm.Opcodes.NEW;
-import static org.objectweb.asm.Opcodes.PUTFIELD;
-import static org.objectweb.asm.Opcodes.RETURN;
-import static org.objectweb.asm.Opcodes.V1_7;
+import static org.objectweb.asm.Opcodes.*;
 
 import java.lang.invoke.CallSite;
 import java.lang.invoke.MethodHandle;
@@ -172,7 +156,18 @@ public class Proxy2 {
   }
   
   //private static final String PROXY_NAME = "com/github/forax/proxy2/Foo";
-  private static final String PROXY_NAME = "java/lang/invoke/Foo";
+  private static final String PROXY_NAME;
+  static {
+    String proxyName;
+    try {
+      Class.forName("java.util.Spliterator");  // 1.8 ?
+      proxyName = "java/lang/invoke/Foo";
+    } catch (ClassNotFoundException e) {
+      // proxy can not be in java.lang.invoke without crashing with OpenJDK 1.7 !
+      proxyName = "com/github/forax/proxy2/Foo";
+    }
+    PROXY_NAME = proxyName;
+  }
   
   /**
    * Create a factory that will create anonymous proxy instances with several fields described by
@@ -240,12 +235,22 @@ public class Proxy2 {
       factory.visitMaxs(-1, -1);
       factory.visitEnd();
     }
+    
+    String mhPlaceHolder = "<<MH_HOLDER>>";
+    int mhHolderCPIndex = writer.newConst(mhPlaceHolder);
 
-    String lookupPlaceHolder = "<<LOOKUP_HOLDER>>";
-    int lookupHolderCPIndex = writer.newConst(lookupPlaceHolder);
-    String handlerPlaceHolder = "<<HANDLER_HOLDER>>";
-    int handlerHolderCPIndex = writer.newConst(handlerPlaceHolder);
-
+    { // bsm
+      MethodVisitor mv = writer.visitMethod(ACC_PRIVATE|ACC_STATIC, "bsm", BSM.getDesc(), null, null);
+      mv.visitCode();
+      mv.visitVarInsn(ALOAD, 3); // mh
+      mv.visitVarInsn(ALOAD, 4); // method
+      mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/invoke/MethodHandle", "invokeExact",
+          "(Ljava/lang/Object;)Ljava/lang/invoke/CallSite;", false);
+      mv.visitInsn(ARETURN);
+      mv.visitMaxs(-1, -1);
+      mv.visitEnd();
+    }
+    
     Method[] methods = interfaze.getMethods();
     int[] methodHolderCPIndexes = new int[methods.length];
     for(int methodIndex = 0; methodIndex < methods.length; methodIndex++) {
@@ -277,7 +282,7 @@ public class Proxy2 {
       methodHolderCPIndexes[methodIndex] = writer.newConst(methodPlaceHolder);
       mv.visitInvokeDynamicInsn(method.getName(),
           "(Ljava/lang/Object;" + initDesc.substring(1, initDesc.length() - 2) + methodDesc.substring(1),
-          BSM, handlerPlaceHolder, lookupPlaceHolder, methodPlaceHolder);
+          BSM, mhPlaceHolder, methodPlaceHolder);
       mv.visitInsn(Type.getReturnType(method).getOpcode(IRETURN));
       mv.visitMaxs(-1, -1);
       mv.visitEnd();
@@ -288,12 +293,11 @@ public class Proxy2 {
     int constantPoolSize = writer.newConst("<<SENTINEL>>");
 
     Object[] patches = new Object[constantPoolSize];
-    patches[lookupHolderCPIndex] = lookup;
-    patches[handlerHolderCPIndex] = handler;
+    patches[mhHolderCPIndex] = MethodHandles.insertArguments(BOOTSTRAP_MH, 0, handler, lookup);
     for(int i = 0; i < methodHolderCPIndexes.length; i++) {
       patches[methodHolderCPIndexes[i]] = methods[i];
     }
-    Class<?> clazz = UNSAFE.defineAnonymousClass(interfaze /*Proxy2.class*/, data, patches);
+    Class<?> clazz = UNSAFE.defineAnonymousClass(interfaze, data, patches);
     UNSAFE.ensureClassInitialized(clazz);
     try {
       return MethodHandles.publicLookup().findStatic(clazz, "0-^-0", methodType);
@@ -302,14 +306,19 @@ public class Proxy2 {
     }
   }
 
-  private static final Handle BSM =
-      new Handle(H_INVOKESTATIC, internalName(Proxy2.class), "bootstrap",
-          MethodType.methodType(CallSite.class, Lookup.class, String.class, MethodType.class, ProxyHandler.class, Lookup.class, Method.class).toMethodDescriptorString());
-
-  /**
-   * Internal Entry point, should never called directly.
-   */
-  public static CallSite bootstrap(Lookup lookup, String name, MethodType methodType, ProxyHandler handler, Lookup interfaceLookup, Method method) throws Throwable {
-    return handler.bootstrap(interfaceLookup, method);
+  private static final MethodHandle BOOTSTRAP_MH;
+  static {
+    try {
+      BOOTSTRAP_MH = MethodHandles.lookup().findVirtual(ProxyHandler.class, "bootstrap",
+          MethodType.methodType(CallSite.class, Lookup.class, Method.class))
+        .asType(MethodType.methodType(CallSite.class, ProxyHandler.class, Lookup.class, Object.class));
+    } catch (NoSuchMethodException|IllegalAccessException e) {  // don't use a multi-catch here !
+      throw new AssertionError(e);
+    }
   }
+  
+  private static final Handle BSM =
+      new Handle(H_INVOKESTATIC, PROXY_NAME, "bsm",
+          MethodType.methodType(CallSite.class, Lookup.class, String.class, MethodType.class,
+              MethodHandle.class, Method.class).toMethodDescriptorString());
 }

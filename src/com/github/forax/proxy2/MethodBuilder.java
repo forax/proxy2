@@ -20,11 +20,8 @@ public class MethodBuilder {
   private MethodType sig;
   private MHTransformer transformer;
   
-  /**
-   * Implementation detail that should be hidden but currently visible because of the way the backport works.
-   */
   @FunctionalInterface
-  public /*FIXME*/interface MHTransformer {
+  interface MHTransformer {
      MethodHandle transform(MethodHandle mh) throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException;
   }
   

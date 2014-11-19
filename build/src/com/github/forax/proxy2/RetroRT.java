@@ -42,8 +42,6 @@ public class RetroRT {
   
   public static CallSite metafactory(Lookup lookup, String name, MethodType type,
                                      MethodType sig, MethodHandle impl, MethodType reifiedSig) throws Throwable {
-    System.out.println("retro metafactory");
-    
     List<Class<?>> capturedTypes = type.parameterList();
     MethodHandle target = impl.asType(reifiedSig.insertParameterTypes(0, capturedTypes)); // apply generic casts
     MethodHandle mh = Proxy2.createAnonymousProxyFactory(lookup, type, new LambdaProxyHandler(target, capturedTypes));

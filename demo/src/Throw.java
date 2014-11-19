@@ -36,7 +36,7 @@ public class Throw {
     Runnable runnable = new Runnable() {
       @Override
       public void run() {
-        //throw null;
+        throw null;
       }
     };
     
