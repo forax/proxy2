@@ -96,7 +96,7 @@ public class MethodBuilder {
    * @param value the value to insert
    * @return the current method builder
    */
-  public MethodBuilder insertValueAt(int parameterIndex, Class<?> type, Object value) {
+  public <T> MethodBuilder insertValueAt(int parameterIndex, Class<T> type, T value) {
     MHTransformer transformer = this.transformer;
     return apply(sig.insertParameterTypes(parameterIndex, type), mh -> transformer.transform(insertArguments(mh, parameterIndex, value)));
   }
@@ -129,7 +129,8 @@ public class MethodBuilder {
    */
   public MethodBuilder convertTo(MethodType methodType) {
     MHTransformer transformer = this.transformer;
-    return apply(methodType, mh -> transformer.transform(mh.asType(methodType)));
+    MethodType sig = this.sig;
+    return apply(methodType, mh -> transformer.transform(mh.asType(sig)));
   }
   
   /**
@@ -238,7 +239,7 @@ public class MethodBuilder {
    * @throws IllegalAccessException throws if a type or a member of a type is not visible.
    */
   public MethodHandle thenCallIdentity() throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
-    return thenCallMethodHandle(identity(sig.parameterType(0)));
+    return thenCallMethodHandle(identity(sig.parameterType(0)).asType(sig));
   }
   
   /**
