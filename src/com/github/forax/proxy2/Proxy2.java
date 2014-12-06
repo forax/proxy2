@@ -24,7 +24,7 @@ import sun.misc.Unsafe;
  * A bunch of static factory methods to create proxy factories.
  * 
  * Unlike java.lang.reflect.Proxy, the implementation doesn't do any caching,
- * so calling {@link #createAnonymousProxyFactory(Lookup, MethodType, ProxyHandler)}
+ * so calling {@link #createAnonymousProxyFactory(MethodType, ProxyHandler)}
  * with the same interface as return type of the method type will generated
  * as many proxy classes as the number of calls.
  */
@@ -37,6 +37,19 @@ public class Proxy2 {
    * Specify how to link a proxy method to its implementation. 
    */
   public interface ProxyHandler {
+    public static abstract class Default implements ProxyHandler {
+      @Override
+      public boolean override(Method method) {
+        return false;
+      }
+      @Override
+      public boolean isMutable(int fieldIndex, Class<?> fieldType) {
+        return false;
+      }
+    }
+    
+    public boolean isMutable(int fieldIndex, Class<?> fieldType);
+    
     /**
      * Returns true if the method should be overridden by the proxy.
      * This method is only called for method that have an existing implementation
@@ -57,7 +70,32 @@ public class Proxy2 {
      * @return a callsite object indicating how to link the method to a target method handle.
      * @throws Throwable if any errors occur.
      */
-    public CallSite bootstrap(Lookup lookup, Method method) throws Throwable;
+    public CallSite bootstrap(ProxyContext context) throws Throwable;
+  }
+  
+  public static class ProxyContext {
+    private final Lookup lookup;
+    private final Method method;
+    
+    private ProxyContext(Lookup lookup, Method method) {
+      this.lookup = lookup;
+      this.method = method;
+    }
+
+    public Method getProxyMethod() {
+      return method;
+    }
+    
+    public MethodHandle findFieldGetter(int fieldIndex, Class<?> type) throws NoSuchFieldException, IllegalAccessException {
+      return lookup.findGetter(lookup.lookupClass(), "arg" + fieldIndex, type);
+    }
+    public MethodHandle findFieldSetter(int fieldIndex, Class<?> type) throws NoSuchFieldException, IllegalAccessException {
+      return lookup.findSetter(lookup.lookupClass(), "arg" + fieldIndex, type);
+    }
+    
+    static ProxyContext create(Lookup lookup, Method method) {
+      return new ProxyContext(lookup, method);
+    }
   }
 
   /**
@@ -105,11 +143,11 @@ public class Proxy2 {
    * @param handler an interface that specifies how a proxy method is linked to its implementation.
    * @return a proxy factory that will create proxy instance.
    * 
-   * @see #createAnonymousProxyFactory(Lookup, MethodType, ProxyHandler)
+   * @see #createAnonymousProxyFactory(MethodType, ProxyHandler)
    * @see #createAnonymousProxyFactory(Class, ProxyHandler)
    */
   public static <T> ProxyFactory<T> createAnonymousProxyFactory(Class<? extends T> type, Class<?>[] fieldTypes, ProxyHandler handler) {
-    MethodHandle mh = createAnonymousProxyFactory(MethodHandles.publicLookup(), MethodType.methodType(type, fieldTypes), handler);
+    MethodHandle mh = createAnonymousProxyFactory(MethodType.methodType(type, fieldTypes), handler);
     return new ProxyFactory<T>() {   // don't use a lambda here to avoid cycle when retro-weaving
       @Override
       public T create(Object... fieldValues) {
@@ -175,8 +213,6 @@ public class Proxy2 {
    * The returned {@link MethodHandle} will have its type being equals to the {@code methodType}
    * taken as argument.
    * 
-   * @param lookup access token used to access to the interface methods, this object will be passed
-   *               as first parameter of the proxy {@code handler}.
    * @param methodType the parameter types of this {@link MethodType} described the type of the fields
    *                   and the return type the interface implemented by the proxy. 
    * @param handler an interface that specifies how a proxy method is linked to its implementation.
@@ -185,11 +221,8 @@ public class Proxy2 {
    * 
    * @see #createAnonymousProxyFactory(Class, Class[], ProxyHandler)
    */
-  public static MethodHandle createAnonymousProxyFactory(Lookup lookup, MethodType methodType, ProxyHandler handler) {
+  public static MethodHandle createAnonymousProxyFactory(MethodType methodType, ProxyHandler handler) {
     Class<?> interfaze = methodType.returnType();
-    if (lookup.in(interfaze).lookupModes() == 0) {
-      throw new UnsupportedOperationException("interface " + interfaze + " is not visible from " + lookup);
-    }
 
     // if the proxy is in java.lang.invoke and the interface is not visible, the OpenJDK 7 VM crashes !
     String proxyName = (!IS_1_8 && !Modifier.isPublic(interfaze.getModifiers()))?
@@ -216,7 +249,8 @@ public class Proxy2 {
       for(int i = 0; i < methodType.parameterCount(); i++) {
         Class<?> boundType = methodType.parameterType(i);
         String fieldName = "arg" + i;
-        FieldVisitor fv = writer.visitField(ACC_PRIVATE|ACC_FINAL, fieldName, Type.getDescriptor(boundType), null, null);
+        int finalFlag = handler.isMutable(i, boundType)? 0: ACC_FINAL;
+        FieldVisitor fv = writer.visitField(ACC_PRIVATE|finalFlag, fieldName, Type.getDescriptor(boundType), null, null);
         fv.visitEnd();
 
         int loadOp = Type.getType(boundType).getOpcode(ILOAD);
@@ -250,9 +284,10 @@ public class Proxy2 {
       MethodVisitor mv = writer.visitMethod(ACC_PRIVATE|ACC_STATIC, "bsm", BSM.getDesc(), null, null);
       mv.visitCode();
       mv.visitVarInsn(ALOAD, 3); // mh
+      mv.visitVarInsn(ALOAD, 0); // lookup
       mv.visitVarInsn(ALOAD, 4); // method
       mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/invoke/MethodHandle", "invokeExact",
-          "(Ljava/lang/Object;)Ljava/lang/invoke/CallSite;", false);
+          "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/reflect/Method;)Ljava/lang/invoke/CallSite;", false);
       mv.visitInsn(ARETURN);
       mv.visitMaxs(-1, -1);
       mv.visitEnd();
@@ -262,10 +297,12 @@ public class Proxy2 {
     int[] methodHolderCPIndexes = new int[methods.length];
     for(int methodIndex = 0; methodIndex < methods.length; methodIndex++) {
       Method method = methods[methodIndex];
-      if (Modifier.isStatic(method.getModifiers())) {
+      int modifiers = method.getModifiers();
+      if (Modifier.isStatic(modifiers)) {
         continue;
       }
-      if (!handler.override(method)) {
+      //FIXME add support of public methods of java.lang.Object
+      if (!Modifier.isAbstract(modifiers) && !handler.override(method)) {
         continue;
       }
       String methodDesc = Type.getMethodDescriptor(method);
@@ -298,9 +335,9 @@ public class Proxy2 {
     byte[] data = writer.toByteArray();
 
     int constantPoolSize = writer.newConst("<<SENTINEL>>");
-
     Object[] patches = new Object[constantPoolSize];
-    patches[mhHolderCPIndex] = MethodHandles.insertArguments(BOOTSTRAP_MH, 0, handler, lookup);
+    patches[mhHolderCPIndex] =  MethodHandles.filterReturnValue(CONTEXT_CREATE,
+        MethodHandles.insertArguments(BOOTSTRAP_MH, 0, handler));
     for(int i = 0; i < methodHolderCPIndexes.length; i++) {
       patches[methodHolderCPIndexes[i]] = methods[i];
     }
@@ -313,13 +350,16 @@ public class Proxy2 {
     }
   }
 
-  private static final MethodHandle BOOTSTRAP_MH;
+  private static final MethodHandle BOOTSTRAP_MH, CONTEXT_CREATE;
   static {
+    Lookup lookup = MethodHandles.lookup();
+    MethodHandle bootstrap, contextCreate;
     try {
-      BOOTSTRAP_MH = MethodHandles.lookup().findVirtual(ProxyHandler.class, "bootstrap",
-          MethodType.methodType(CallSite.class, Lookup.class, Method.class))
-        .asType(MethodType.methodType(CallSite.class, ProxyHandler.class, Lookup.class, Object.class));
-    } catch (NoSuchMethodException|IllegalAccessException e) {  // don't use a multi-catch here !
+      BOOTSTRAP_MH = lookup.findVirtual(ProxyHandler.class, "bootstrap",
+          MethodType.methodType(CallSite.class, ProxyContext.class));
+      CONTEXT_CREATE = lookup.findStatic(ProxyContext.class, "create",
+          MethodType.methodType(ProxyContext.class, Lookup.class, Method.class));
+    } catch (NoSuchMethodException|IllegalAccessException e) {
       throw new AssertionError(e);
     }
   }

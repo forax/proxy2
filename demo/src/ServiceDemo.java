@@ -3,12 +3,12 @@ import java.lang.invoke.ConstantCallSite;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.reflect.Method;
 
 import com.github.forax.proxy2.MethodBuilder;
 import com.github.forax.proxy2.MethodBuilder.Fun;
 import com.github.forax.proxy2.Proxy2;
+import com.github.forax.proxy2.Proxy2.ProxyContext;
 import com.github.forax.proxy2.Proxy2.ProxyFactory;
 import com.github.forax.proxy2.Proxy2.ProxyHandler;
 
@@ -40,12 +40,13 @@ public class ServiceDemo {
     ProxyFactory<Service> factory = Proxy2.createAnonymousProxyFactory(
       Service.class,                        
       new Class<?>[] { Service.class },     
-      new ProxyHandler() {
+      new ProxyHandler.Default() {
         @Override
         public boolean override(Method method) { return true; }
 
         @Override
-        public CallSite bootstrap(Lookup lookup, Method method) throws Throwable {
+        public CallSite bootstrap(ProxyContext context) throws Throwable {
+          Method method = context.getProxyMethod();
           MethodHandle target = MethodBuilder.methodBuilder(method, Service.class)   
               .dropFirstParameter()
               .before(new Fun<MethodBuilder, MethodHandle>() {
@@ -54,7 +55,7 @@ public class ServiceDemo {
                   return b.dropFirstParameter().boxAllArguments().thenCallMethodHandle(intercept);
                 }
               }) 
-              .thenCall(lookup, method);                                 
+              .thenCall(MethodHandles.lookup(), method);                                 
           return new ConstantCallSite(target);
         }
       });

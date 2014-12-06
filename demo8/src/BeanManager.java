@@ -11,21 +11,19 @@ import java.util.HashMap;
 
 import com.github.forax.proxy2.MethodBuilder;
 import com.github.forax.proxy2.Proxy2;
+import com.github.forax.proxy2.Proxy2.ProxyContext;
 import com.github.forax.proxy2.Proxy2.ProxyHandler;
 
 public class BeanManager {
   final ClassValue<MethodHandle> beanFactories = new ClassValue<MethodHandle>() {
     @Override
     protected MethodHandle computeValue(Class<?> type) {
-      return Proxy2.createAnonymousProxyFactory(MethodHandles.publicLookup(), MethodType.methodType(type, HashMap.class), new ProxyHandler() {
+      return Proxy2.createAnonymousProxyFactory(MethodType.methodType(type, HashMap.class), new ProxyHandler.Default() {
         @Override
-        public boolean override(Method method) {
-          return true;
-        }
-
-        @Override
-        public CallSite bootstrap(Lookup lookup, Method method) throws Throwable {
+        public CallSite bootstrap(ProxyContext context) throws Throwable {
           MethodHandle target;
+          Lookup lookup = MethodHandles.publicLookup();
+          Method method = context.getProxyMethod();
           MethodBuilder builder = MethodBuilder.methodBuilder(method, HashMap.class);
           switch(method.getName()) {
           case "toString":
@@ -38,8 +36,8 @@ public class BeanManager {
             if (method.getParameterCount() == 0) { 
               target = builder                     // getter
                   .dropFirstParameter()
-                  .insertValueAt(0, Object.class, method.getName())
-                  .convertTo(Object.class, Object.class)
+                  .insertValueAt(1, Object.class, method.getName())
+                  .convertTo(Object.class, HashMap.class, Object.class)
                   .thenCall(lookup, HashMap.class.getMethod("get", Object.class));
             } else {                               
               target = builder                     // setter
@@ -88,8 +86,9 @@ public class BeanManager {
 
   public static void main(String[] args) {
     BeanManager beanManager = new BeanManager();
-    User user = beanManager.newBean(User.class);
-    user.firstName("Fox").lastName("Mulder").age(30);
+    User user = beanManager.newBean(User.class)
+        .firstName("Fox").lastName("Mulder").age(30);
+    System.out.println(user.lastName());
     System.out.println(user);
   }
 }

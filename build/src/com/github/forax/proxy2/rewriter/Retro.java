@@ -64,7 +64,6 @@ public class Retro {
                 super.visitInvokeDynamicInsn(name, desc, RETRO_BSM, bsmArgs); 
                 return;
               }
-              System.out.println("bsm " + bsm);
               throw new IllegalStateException("invalid invokedynamic call");
             }
           };

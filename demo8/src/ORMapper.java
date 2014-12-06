@@ -13,10 +13,11 @@ import java.util.Set;
 
 import com.github.forax.proxy2.MethodBuilder;
 import com.github.forax.proxy2.Proxy2;
+import com.github.forax.proxy2.Proxy2.ProxyContext;
 import com.github.forax.proxy2.Proxy2.ProxyHandler;
 
 public class ORMapper {
-  static class TransactionManager {
+  public static class TransactionManager {
     private static final ThreadLocal<HashSet<Object>> transactions = ThreadLocal.withInitial(HashSet::new);
 
     public static void markDirty(Object o) {
@@ -33,15 +34,12 @@ public class ORMapper {
   final ClassValue<MethodHandle> beanFactories = new ClassValue<MethodHandle>() {
     @Override
     protected MethodHandle computeValue(Class<?> type) {
-      return Proxy2.createAnonymousProxyFactory(MethodHandles.publicLookup(), MethodType.methodType(type, HashMap.class), new ProxyHandler() {
+      return Proxy2.createAnonymousProxyFactory(MethodType.methodType(type, HashMap.class), new ProxyHandler.Default() {
         @Override
-        public boolean override(Method method) {
-          return true;
-        }
-
-        @Override
-        public CallSite bootstrap(Lookup lookup, Method method) throws Throwable {
+        public CallSite bootstrap(ProxyContext context) throws Throwable {
           MethodHandle target;
+          Lookup lookup = MethodHandles.publicLookup();
+          Method method = context.getProxyMethod();
           MethodBuilder builder = MethodBuilder.methodBuilder(method, HashMap.class);
           switch(method.getName()) {
           case "toString":
@@ -54,8 +52,8 @@ public class ORMapper {
             if (method.getParameterCount() == 0) { 
               target = builder                     // getter
                   .dropFirstParameter()
-                  .insertValueAt(0, Object.class, method.getName())
-                  .convertTo(Object.class, Object.class)
+                  .insertValueAt(1, Object.class, method.getName())
+                  .convertTo(Object.class, HashMap.class, Object.class)
                   .thenCall(lookup, HashMap.class.getMethod("get", Object.class));
             } else {                               
               target = builder                     // setter
@@ -78,7 +76,7 @@ public class ORMapper {
     }
   };
 
-  public static <T> T newBean(ClassValue<MethodHandle> factories, Class<T> type) {
+  static <T> T newBean(ClassValue<MethodHandle> factories, Class<T> type) {
     return newInstance(factories, type, new HashMap<>());
   }
 
@@ -95,14 +93,11 @@ public class ORMapper {
   private final ClassValue<MethodHandle> serviceFactories = new ClassValue<MethodHandle>() {
     @Override
     protected MethodHandle computeValue(Class<?> type) {
-      return Proxy2.createAnonymousProxyFactory(MethodHandles.publicLookup(), MethodType.methodType(type), new ProxyHandler() {
+      Lookup lookup = MethodHandles.lookup();
+      return Proxy2.createAnonymousProxyFactory(MethodType.methodType(type), new ProxyHandler.Default() {
         @Override
-        public boolean override(Method method) {
-          return true;
-        }
-
-        @Override
-        public CallSite bootstrap(Lookup lookup, Method method) throws Throwable {
+        public CallSite bootstrap(ProxyContext context) throws Throwable {
+          Method method = context.getProxyMethod();
           switch(method.getName()) {
           case "create":
             MethodHandle target = MethodBuilder.methodBuilder(method)
@@ -110,7 +105,7 @@ public class ORMapper {
                 .insertValueAt(0, ClassValue.class, beanFactories)
                 .insertValueAt(1, Class.class, method.getReturnType())
                 .convertTo(Object.class, ClassValue.class, Class.class)
-                .thenCall(lookup, ORMapper.class.getMethod("newBean", ClassValue.class, Class.class));
+                .thenCall(lookup, ORMapper.class.getDeclaredMethod("newBean", ClassValue.class, Class.class));
             return new ConstantCallSite(target);
           default:
             throw new NoSuchMethodError(method.toString());
@@ -134,7 +129,7 @@ public class ORMapper {
     public SQLUser name(String name);
 
     @Override
-    public String toString();
+    public String toString();  //FIXME remove when Object methods will be supported
   }
 
   public interface SQLService {
@@ -144,8 +139,8 @@ public class ORMapper {
   public static void main(String[] args) {
     ORMapper mapper = new ORMapper();
     SQLService sqlService = mapper.createService(SQLService.class);
-    SQLUser user = sqlService.create();
-    user.id(3).name("Bob");
+    SQLUser user = sqlService.create().id(3).name("Bob");
+    System.out.println(user.name());
     System.out.println(TransactionManager.getDirtySetAndClear());
   }
 }
