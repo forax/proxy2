@@ -11,6 +11,7 @@ import java.lang.reflect.Modifier;
 import java.util.List;
 
 import com.github.forax.proxy2.Proxy2;
+import com.github.forax.proxy2.Proxy2.ProxyContext;
 import com.github.forax.proxy2.Proxy2.ProxyHandler;
 
 public class RetroRT {
@@ -29,8 +30,14 @@ public class RetroRT {
     }
     
     @Override
-    public CallSite bootstrap(Lookup lookup, Method method) throws Throwable {
+    public boolean isMutable(int fieldIndex, Class<?> fieldType) {
+      return false;
+    }
+    
+    @Override
+    public CallSite bootstrap(ProxyContext context) throws Throwable {
       // we can not use MethodBuilder here, it will introduce a cycle when retro-weaving
+      Method method = context.getProxyMethod();
       MethodType methodType = MethodType.methodType(method.getReturnType(), method.getParameterTypes());
       MethodHandle endPoint = target;
       if (!methodType.equals(target.type())) {
@@ -44,7 +51,7 @@ public class RetroRT {
                                      MethodType sig, MethodHandle impl, MethodType reifiedSig) throws Throwable {
     List<Class<?>> capturedTypes = type.parameterList();
     MethodHandle target = impl.asType(reifiedSig.insertParameterTypes(0, capturedTypes)); // apply generic casts
-    MethodHandle mh = Proxy2.createAnonymousProxyFactory(lookup, type, new LambdaProxyHandler(target, capturedTypes));
+    MethodHandle mh = Proxy2.createAnonymousProxyFactory(type, new LambdaProxyHandler(target, capturedTypes));
     if (type.parameterCount() == 0) { // no capture
       return new ConstantCallSite(MethodHandles.constant(type.returnType(), mh.invoke()));
     }
