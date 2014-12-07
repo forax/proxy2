@@ -37,17 +37,40 @@ public class Proxy2 {
    * Specify how to link a proxy method to its implementation. 
    */
   public interface ProxyHandler {
+    /**
+     * Provide default implementations of all methods of {@link ProxyHandler} 
+     * but {@link ProxyHandler#bootstrap(ProxyContext)}.
+     */
     public static abstract class Default implements ProxyHandler {
+      /**
+       * {@inheritDoc}
+       * 
+       * @implSpec
+       * The implementation always returns false.
+       */
       @Override
       public boolean override(Method method) {
         return false;
       }
+      
+      /**
+       * {@inheritDoc}
+       * 
+       * @implSpec
+       * The implementation always returns false.
+       */
       @Override
       public boolean isMutable(int fieldIndex, Class<?> fieldType) {
         return false;
       }
     }
     
+    /**
+     * Returns true if the proxy field should be mutable.
+     * @param fieldIndex the index of the proxy field.
+     * @param fieldType the type of the proxy field.
+     * @return true if the proxy field should be mutable, false otherwise.
+     */
     public boolean isMutable(int fieldIndex, Class<?> fieldType);
     
     /**
@@ -65,14 +88,18 @@ public class Proxy2 {
      * Called to link a proxy method to a target method handle (through a callsite's target).
      * This method is called once by method at runtime the first time the proxy method is called.
      * 
-     * @param lookup lookup object corresponding to the interface of the proxy.
-     * @param method the method object to link.
+     * @param context object containing information like the method that will be linked
+     *                and methods to access the fields and methods of the proxy implementation.
      * @return a callsite object indicating how to link the method to a target method handle.
      * @throws Throwable if any errors occur.
      */
     public CallSite bootstrap(ProxyContext context) throws Throwable;
   }
   
+  
+  /**
+   * 
+   */
   public static class ProxyContext {
     private final Lookup lookup;
     private final Method method;
@@ -82,15 +109,21 @@ public class Proxy2 {
       this.method = method;
     }
 
+    /**
+     * Returns the method about to be linked.
+     * @return
+     */
     public Method getProxyMethod() {
       return method;
     }
     
     public MethodHandle findFieldGetter(int fieldIndex, Class<?> type) throws NoSuchFieldException, IllegalAccessException {
-      return lookup.findGetter(lookup.lookupClass(), "arg" + fieldIndex, type);
+      return lookup.findGetter(lookup.lookupClass(), "arg" + fieldIndex, type).
+          asType(MethodType.methodType(type, Object.class));
     }
     public MethodHandle findFieldSetter(int fieldIndex, Class<?> type) throws NoSuchFieldException, IllegalAccessException {
-      return lookup.findSetter(lookup.lookupClass(), "arg" + fieldIndex, type);
+      return lookup.findSetter(lookup.lookupClass(), "arg" + fieldIndex, type).
+          asType(MethodType.methodType(void.class, Object.class, type));
     }
     
     static ProxyContext create(Lookup lookup, Method method) {
