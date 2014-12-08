@@ -5,6 +5,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import java.lang.invoke.MutableCallSite;
+import java.lang.invoke.SwitchPoint;
 import java.lang.reflect.Method;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Arrays;
@@ -76,6 +77,14 @@ public class ExpandoObjects {
           .collect(Collectors.joining(",", "{", "}"));
     }
     
+    MethodHandle call(Object[] stash, String propertyName) throws Throwable {
+      Object value = getProperty(stash, propertyName);
+      if (!(value instanceof MethodHandle)) {
+        throw new NoSuchMethodError(propertyName);
+      }
+      return (MethodHandle)value;
+    }
+    
     Object getProperty(Object[] stash, String propertyName) throws Throwable {
       Property property = propertyMap.get(propertyName);
       if (property == null) {
@@ -88,6 +97,7 @@ public class ExpandoObjects {
       Property property = hiddenClass.propertyMap.get(propertyName);
       if (property != null) { // fast path
         stash[property.slot] = value;
+        property.invalidate();
         return;
       }
       hiddenClass.updateProperty(proxy, stash, hiddenClassSetter, stashSetter, propertyName, value);
@@ -98,7 +108,7 @@ public class ExpandoObjects {
       HashSet<String> propertyNames = new HashSet<>(propertyMap.keySet());
       propertyNames.add(propertyName);
       HiddenClass newHiddenClass = HIDDEN_CLASS_MAP.computeIfAbsent(propertyNames, __ -> {
-        HashMap<String, Property> newPropertyMap = new HashMap<>(propertyMap);
+        HashMap<String, Property> newPropertyMap = new HashMap<>(propertyMap);  // should we share properties ?
         int slot = newPropertyMap.size();
         newPropertyMap.put(propertyName, new Property(slot));
         return new HiddenClass(newPropertyMap);
@@ -114,12 +124,16 @@ public class ExpandoObjects {
       hiddenClassSetter.invokeExact(proxy, newHiddenClass);
     }
     
-    static final MethodHandle GET_PROPERTY, SET_PROPERTY;
+    
+    
+    static final MethodHandle GET_PROPERTY, CALL, SET_PROPERTY;
     static {
       Lookup lookup = MethodHandles.lookup();
       try {
         GET_PROPERTY = lookup.findVirtual(HiddenClass.class, "getProperty",
             MethodType.methodType(Object.class, Object[].class, String.class));
+        CALL = lookup.findVirtual(HiddenClass.class, "call",
+            MethodType.methodType(MethodHandle.class, Object[].class, String.class));
         SET_PROPERTY = lookup.findStatic(HiddenClass.class, "setProperty",
             MethodType.methodType(void.class, Object.class, HiddenClass.class, Object[].class, MethodHandle.class, MethodHandle.class, String.class, Object.class));
       } catch (NoSuchMethodException | IllegalAccessException e) {
@@ -130,6 +144,7 @@ public class ExpandoObjects {
   
   static class Property {
     final int slot;
+    SwitchPoint switchPoint;  // may be null if the property change too often
     
     private static MethodHandle[] GETTERS;
     private static MethodHandle[] SETTERS;
@@ -139,6 +154,7 @@ public class ExpandoObjects {
     
     Property(int slot) {
       this.slot = slot;
+      this.switchPoint = new SwitchPoint();
     }
     
     private MethodHandle accessor(MethodHandle[] array, Consumer<MethodHandle[]> updater, IntFunction<MethodHandle> creator) {
@@ -165,12 +181,35 @@ public class ExpandoObjects {
     }
     
     MethodHandle setter() {
-      return accessor(SETTERS, array -> SETTERS = array, slot -> 
+      MethodHandle setter =  accessor(SETTERS, array -> SETTERS = array, slot -> 
         MethodHandles.dropArguments(
           MethodHandles.insertArguments(
               MethodHandles.arrayElementSetter(Object[].class),
               1, slot),
           0, Object.class, HiddenClass.class));
+      if (switchPoint == null) {
+        return setter;
+      }
+      return MethodHandles.foldArguments(setter, INVALIDATE.bindTo(this));
+    }
+    
+    void invalidate() {
+      SwitchPoint switchPoint = this.switchPoint;
+      if (switchPoint == null) {
+        return;
+      }
+      SwitchPoint.invalidateAll(new SwitchPoint[] {switchPoint});
+      this.switchPoint = new SwitchPoint();
+    }
+    
+    private static MethodHandle INVALIDATE;
+    static {
+      try {
+        INVALIDATE = MethodHandles.lookup().findVirtual(Property.class, "invalidate",
+            MethodType.methodType(void.class));
+      } catch (NoSuchMethodException | IllegalAccessException e) {
+        throw new AssertionError(e);
+      }
     }
   }
   
@@ -239,7 +278,15 @@ public class ExpandoObjects {
                        context.findFieldSetter(1, Object[].class)));
           }
           
-          throw new UnsupportedOperationException(method.toString());
+          MethodType methodType =
+              MethodType.methodType(MethodHandle.class, Object.class, HiddenClass.class, Object[].class);
+          InliningCacheCallSite callSite = new InliningCacheCallSite(method.getName(), methodType, InliningCacheCallSite.CALL_FALLBACK);
+          return new ConstantCallSite(
+              MethodHandles.foldArguments(
+                  MethodHandles.dropArguments(
+                      MethodHandles.exactInvoker(MethodType.methodType(method.getReturnType(), method.getParameterTypes())),
+                      1, Object.class, HiddenClass.class, Object[].class),
+                  callSite.dynamicInvoker()));
         }
       });
     }
@@ -260,6 +307,32 @@ public class ExpandoObjects {
       setTarget(fallback);
     }
 
+    MethodHandle callFallback(Object proxy, HiddenClass hiddenClass, Object[] stash) throws Throwable {
+      Property property = hiddenClass.propertyMap.get(propertyName);
+      Object propertyValue;
+      if (property == null || !((propertyValue = stash[property.slot]) instanceof MethodHandle)) {
+        throw new NoSuchMethodError(propertyName);
+      }
+      MethodHandle value = (MethodHandle)propertyValue;
+      SwitchPoint switchPoint = property.switchPoint;
+      MethodHandle target;
+      if (switchPoint != null && retry++ < MAX_RETRY) {
+        MethodHandle mh = MethodHandles.dropArguments(
+            MethodHandles.constant(MethodHandle.class, value),
+            0, Object.class, HiddenClass.class, Object[].class);
+        target = MethodHandles.guardWithTest(CHECK_HIDDEN_CLASS.bindTo(hiddenClass),
+            switchPoint.guardWithTest(mh, fallback),
+            fallback);
+      } else { // too many different hidden classes or too many changes
+        property.switchPoint = null;
+        target = MethodHandles.dropArguments(
+            MethodHandles.insertArguments(HiddenClass.CALL, 2, propertyName),
+            0, Object.class);
+      }
+      setTarget(target);
+      return value;
+    }
+    
     Object getFallback(Object proxy, HiddenClass hiddenClass, Object[] stash) throws Throwable {
       Property property = hiddenClass.propertyMap.get(propertyName);
       if (property == null) {
@@ -285,8 +358,12 @@ public class ExpandoObjects {
         HiddenClass.setProperty(proxy, hiddenClass, stash, hiddenClassSetter, stashSetter, propertyName, value);
         return;
       }
+      
+      // the property has a new value
+      property.invalidate();
+      
       MethodHandle target;
-      if (retry++ < MAX_RETRY) {
+      if (retry++ < MAX_RETRY) {  
         target = MethodHandles.guardWithTest(CHECK_HIDDEN_CLASS.bindTo(hiddenClass),
             property.setter().asType(type()),
             fallback);
@@ -303,10 +380,12 @@ public class ExpandoObjects {
     }
     
     private static final MethodHandle CHECK_HIDDEN_CLASS;
-    static final MethodHandle GET_FALLBACK, SET_FALLBACK;
+    static final MethodHandle CALL_FALLBACK, GET_FALLBACK, SET_FALLBACK;
     static {
       Lookup lookup = MethodHandles.lookup();
       try {
+        CALL_FALLBACK = lookup.findVirtual(InliningCacheCallSite.class, "callFallback",
+            MethodType.methodType(MethodHandle.class, Object.class, HiddenClass.class, Object[].class));
         GET_FALLBACK = lookup.findVirtual(InliningCacheCallSite.class, "getFallback",
             MethodType.methodType(Object.class, Object.class, HiddenClass.class, Object[].class));
         SET_FALLBACK = lookup.findVirtual(InliningCacheCallSite.class, "setFallback",
@@ -340,7 +419,18 @@ public class ExpandoObjects {
     void setY(int y);
   }
   
-  public static void main(String[] args) {
+  public interface Hello extends ExpandoObject {
+    void hello(String s);
+  }
+  
+  private static void hello(String s) {
+    System.out.println("hello " + s);
+  }
+  private static void hello2(String s) {
+    System.out.println("hello2 " + s);
+  }
+  
+  public static void main(String[] args) throws NoSuchMethodException, IllegalAccessException {
     Point point = createExpando(Point.class);
     point.$("x", 1);
     System.out.println(point.getHiddenClass());
@@ -355,5 +445,19 @@ public class ExpandoObjects {
     point2.$("x", 1);
     System.out.println(point2.getHiddenClass());
     System.out.println(point.$("x") + " " + point.$("y"));
+    
+    
+    // and with methods
+    MethodHandle hello = MethodHandles.lookup().findStatic(ExpandoObjects.class, "hello",
+        MethodType.methodType(void.class, String.class));
+    MethodHandle hello2 = MethodHandles.lookup().findStatic(ExpandoObjects.class, "hello2",
+        MethodType.methodType(void.class, String.class));
+    Hello h = createExpando(Hello.class);
+    Runnable runnable = () -> h.hello("expando");
+    h.$("hello", hello);
+    runnable.run();
+    runnable.run();
+    h.$("hello", hello2);
+    runnable.run();
   }
 }
