@@ -3,7 +3,6 @@ import static com.github.forax.proxy2.MethodBuilder.methodBuilder;
 import java.lang.invoke.CallSite;
 import java.lang.invoke.ConstantCallSite;
 import java.lang.invoke.MethodHandle;
-import java.lang.reflect.Method;
 
 import com.github.forax.proxy2.Proxy2;
 import com.github.forax.proxy2.Proxy2.ProxyContext;
@@ -28,7 +27,7 @@ public class Main {
         new ProxyHandler.Default() {
           @Override
           public CallSite bootstrap(ProxyContext context) throws Throwable {
-            System.out.println("require implementation of " + context.getProxyMethod());
+            System.out.println("require implementation of " + context.method());
             
             MethodHandle target = methodBuilder(context.type())
                 .dropFirstParameter()  // drop the proxy object

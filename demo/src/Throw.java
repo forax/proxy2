@@ -25,7 +25,7 @@ public class Throw {
 
         @Override
         public CallSite bootstrap(ProxyContext context) throws Throwable {
-          Method method = context.getProxyMethod();
+          Method method = context.method();
           MethodHandle target = methodBuilder(context.type())        // configure the builder
               .dropFirstParameter()                                  // remove the proxy object
               .thenCall(MethodHandles.publicLookup(), method);       // call the method

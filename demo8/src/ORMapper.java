@@ -39,7 +39,7 @@ public class ORMapper {
         public CallSite bootstrap(ProxyContext context) throws Throwable {
           MethodHandle target;
           Lookup lookup = MethodHandles.publicLookup();
-          Method method = context.getProxyMethod();
+          Method method = context.method();
           MethodBuilder builder = MethodBuilder.methodBuilder(context.type());
           switch(method.getName()) {
           case "toString":
@@ -97,7 +97,7 @@ public class ORMapper {
       return Proxy2.createAnonymousProxyFactory(MethodType.methodType(type), new ProxyHandler.Default() {
         @Override
         public CallSite bootstrap(ProxyContext context) throws Throwable {
-          Method method = context.getProxyMethod();
+          Method method = context.method();
           switch(method.getName()) {
           case "create":
             MethodHandle target = MethodBuilder.methodBuilder(context.type())

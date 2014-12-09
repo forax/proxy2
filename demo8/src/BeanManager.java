@@ -23,7 +23,7 @@ public class BeanManager {
         public CallSite bootstrap(ProxyContext context) throws Throwable {
           MethodHandle target;
           Lookup lookup = MethodHandles.publicLookup();
-          Method method = context.getProxyMethod();
+          Method method = context.method();
           MethodBuilder builder = MethodBuilder.methodBuilder(context.type());
           switch(method.getName()) {
           case "toString":

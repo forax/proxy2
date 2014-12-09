@@ -232,7 +232,7 @@ public class ExpandoObjects {
         }
         @Override
         public CallSite bootstrap(ProxyContext context) throws Throwable {
-          Method method = context.getProxyMethod();
+          Method method = context.method();
           String name = method.getName();
           int parameterCount = method.getParameterCount();
           if (method.getDeclaringClass() == ExpandoObject.class) {
@@ -423,10 +423,10 @@ public class ExpandoObjects {
     void hello(String s);
   }
   
-  private static void hello(String s) {
+  static void hello(String s) {
     System.out.println("hello " + s);
   }
-  private static void hello2(String s) {
+  static void hello2(String s) {
     System.out.println("hello2 " + s);
   }
   

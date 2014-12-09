@@ -37,7 +37,7 @@ public class RetroRT {
     @Override
     public CallSite bootstrap(ProxyContext context) throws Throwable {
       // we can not use MethodBuilder here, it will introduce a cycle when retro-weaving
-      Method method = context.getProxyMethod();
+      Method method = context.method();
       MethodType methodType = MethodType.methodType(method.getReturnType(), method.getParameterTypes());
       MethodHandle endPoint = target;
       if (!methodType.equals(target.type())) {
