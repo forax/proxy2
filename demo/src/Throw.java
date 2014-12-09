@@ -25,11 +25,10 @@ public class Throw {
 
         @Override
         public CallSite bootstrap(ProxyContext context) throws Throwable {
-          System.out.println("bootstrap");
           Method method = context.getProxyMethod();
-          MethodHandle target = methodBuilder(method, Runnable.class)    // configure the builder
-              .dropFirstParameter()                                      // remove the proxy object
-              .thenCall(MethodHandles.publicLookup(), method);           // call the method
+          MethodHandle target = methodBuilder(context.type())        // configure the builder
+              .dropFirstParameter()                                  // remove the proxy object
+              .thenCall(MethodHandles.publicLookup(), method);       // call the method
           return new ConstantCallSite(target);
         }
       });

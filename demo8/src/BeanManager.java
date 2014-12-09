@@ -24,7 +24,7 @@ public class BeanManager {
           MethodHandle target;
           Lookup lookup = MethodHandles.publicLookup();
           Method method = context.getProxyMethod();
-          MethodBuilder builder = MethodBuilder.methodBuilder(method, HashMap.class);
+          MethodBuilder builder = MethodBuilder.methodBuilder(context.type());
           switch(method.getName()) {
           case "toString":
             target = builder

@@ -4,6 +4,7 @@ import static java.lang.invoke.MethodHandles.*;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles.Lookup;
+import java.lang.invoke.CallSite;
 import java.lang.invoke.MethodType;
 import java.lang.invoke.MutableCallSite;
 import java.lang.invoke.WrongMethodTypeException;
@@ -11,6 +12,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collections;
+
+import com.github.forax.proxy2.Proxy2.ProxyContext;
 
 /**
  * A builder-like class easing the creation of method handle-tree to specify
@@ -55,28 +58,20 @@ public class MethodBuilder {
   
   /**
    * Create a method builder with the signature of the implementation method should conform.
+   * Typically, the MethodBuilder can be initialized using the {@link ProxyContext#type() type}
+   * got from the {@link ProxyContext}.
+   * <pre>
+   *    public CallSite bootstrap(ProxyContext context) throws Throwable {
+   *      MethodBuilder builder = MethodBuilder.methodBuilder(context.type());
+   *      ...
+   *    }
+   * </pre>
+   * 
    * @param methodType the method type that the {@link #thenCallMethodHandle(MethodHandle) resulting method handle}.
    * @return a new method builder
    */
   public static MethodBuilder methodBuilder(MethodType methodType) {
     return new MethodBuilder().apply(methodType, mh -> mh);
-  }
-  
-  /**
-   * Create a method builder using the field types and the signature of the method taken as argument.
-   * @param method a method to implement.
-   * @param fieldTypes the field types of the proxy.
-   * @return the current method builder
-   * 
-   * @see Proxy2.ProxyHandler
-   * @see Proxy2#createAnonymousProxyFactory(MethodType, com.github.forax.proxy2.Proxy2.ProxyHandler)
-   */
-  public static MethodBuilder methodBuilder(Method method, Class<?>... fieldTypes) {
-    ArrayList<Class<?>> parameterTypes = new ArrayList<>();
-    parameterTypes.add(Object.class);                                // prepend the proxy object type
-    Collections.addAll(parameterTypes, fieldTypes);                  // then the field types
-    Collections.addAll(parameterTypes, method.getParameterTypes());  // then the parameter types
-    return methodBuilder(MethodType.methodType(method.getReturnType(), parameterTypes));
   }
   
   /**

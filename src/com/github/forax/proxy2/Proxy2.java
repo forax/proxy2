@@ -102,10 +102,12 @@ public class Proxy2 {
    */
   public static class ProxyContext {
     private final Lookup lookup;
+    private final MethodType methodType;
     private final Method method;
     
-    private ProxyContext(Lookup lookup, Method method) {
+    private ProxyContext(Lookup lookup, MethodType methodType, Method method) {
       this.lookup = lookup;
+      this.methodType = methodType;
       this.method = method;
     }
 
@@ -117,6 +119,10 @@ public class Proxy2 {
       return method;
     }
     
+    public MethodType type() {
+      return methodType;
+    }
+    
     public MethodHandle findFieldGetter(int fieldIndex, Class<?> type) throws NoSuchFieldException, IllegalAccessException {
       return lookup.findGetter(lookup.lookupClass(), "arg" + fieldIndex, type).
           asType(MethodType.methodType(type, Object.class));
@@ -126,8 +132,9 @@ public class Proxy2 {
           asType(MethodType.methodType(void.class, Object.class, type));
     }
     
-    static ProxyContext create(Lookup lookup, Method method) {
-      return new ProxyContext(lookup, method);
+    // referenced by a method handle
+    static ProxyContext create(Lookup lookup, MethodType methodType, Method method) {
+      return new ProxyContext(lookup, methodType, method);
     }
   }
 
@@ -318,9 +325,10 @@ public class Proxy2 {
       mv.visitCode();
       mv.visitVarInsn(ALOAD, 3); // mh
       mv.visitVarInsn(ALOAD, 0); // lookup
+      mv.visitVarInsn(ALOAD, 2); // method type
       mv.visitVarInsn(ALOAD, 4); // method
       mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/invoke/MethodHandle", "invokeExact",
-          "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/reflect/Method;)Ljava/lang/invoke/CallSite;", false);
+          "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/invoke/MethodType;Ljava/lang/reflect/Method;)Ljava/lang/invoke/CallSite;", false);
       mv.visitInsn(ARETURN);
       mv.visitMaxs(-1, -1);
       mv.visitEnd();
@@ -386,12 +394,11 @@ public class Proxy2 {
   private static final MethodHandle BOOTSTRAP_MH, CONTEXT_CREATE;
   static {
     Lookup lookup = MethodHandles.lookup();
-    MethodHandle bootstrap, contextCreate;
     try {
       BOOTSTRAP_MH = lookup.findVirtual(ProxyHandler.class, "bootstrap",
           MethodType.methodType(CallSite.class, ProxyContext.class));
       CONTEXT_CREATE = lookup.findStatic(ProxyContext.class, "create",
-          MethodType.methodType(ProxyContext.class, Lookup.class, Method.class));
+          MethodType.methodType(ProxyContext.class, Lookup.class, MethodType.class, Method.class));
     } catch (NoSuchMethodException|IllegalAccessException e) {
       throw new AssertionError(e);
     }

@@ -46,7 +46,7 @@ public class ServiceDemo8 {
         @Override
         public CallSite bootstrap(ProxyContext context) throws Throwable {
           Method method = context.getProxyMethod();
-          MethodHandle target = MethodBuilder.methodBuilder(method, Service.class)   
+          MethodHandle target = MethodBuilder.methodBuilder(context.type())   
               .dropFirstParameter()
               .before(b -> b.dropFirstParameter().boxAllArguments().thenCallMethodHandle(intercept)) 
               .thenCall(MethodHandles.lookup(), method);                                 

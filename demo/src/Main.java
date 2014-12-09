@@ -30,7 +30,7 @@ public class Main {
           public CallSite bootstrap(ProxyContext context) throws Throwable {
             System.out.println("require implementation of " + context.getProxyMethod());
             
-            MethodHandle target = methodBuilder(context.getProxyMethod())
+            MethodHandle target = methodBuilder(context.type())
                 .dropFirstParameter()  // drop the proxy object
                 .thenCallIdentity();   // then return the value taken as argument
             return new ConstantCallSite(target);

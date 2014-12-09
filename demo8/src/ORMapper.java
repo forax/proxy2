@@ -40,7 +40,7 @@ public class ORMapper {
           MethodHandle target;
           Lookup lookup = MethodHandles.publicLookup();
           Method method = context.getProxyMethod();
-          MethodBuilder builder = MethodBuilder.methodBuilder(method, HashMap.class);
+          MethodBuilder builder = MethodBuilder.methodBuilder(context.type());
           switch(method.getName()) {
           case "toString":
             target = builder
@@ -100,7 +100,7 @@ public class ORMapper {
           Method method = context.getProxyMethod();
           switch(method.getName()) {
           case "create":
-            MethodHandle target = MethodBuilder.methodBuilder(method)
+            MethodHandle target = MethodBuilder.methodBuilder(context.type())
                 .dropFirstParameter()
                 .insertValueAt(0, ClassValue.class, beanFactories)
                 .insertValueAt(1, Class.class, method.getReturnType())
