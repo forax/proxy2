@@ -1,6 +1,7 @@
 package com.github.forax.proxy2;
 
 import static java.lang.invoke.MethodHandles.*;
+import static java.lang.invoke.MethodType.methodType;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles.Lookup;
@@ -9,6 +10,7 @@ import java.lang.invoke.MutableCallSite;
 import java.lang.invoke.WrongMethodTypeException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Arrays;
 
 import com.github.forax.proxy2.Proxy2.ProxyContext;
 
@@ -78,7 +80,20 @@ public class MethodBuilder {
   public MethodBuilder boxAllArguments() {
     MethodType sig = this.sig;
     MHTransformer transformer = this.transformer;
-    return apply(MethodType.methodType(sig.returnType(), Object[].class), mh -> transformer.transform(mh.asCollector(Object[].class, sig.parameterCount()).asType(sig)));
+    return apply(methodType(sig.returnType(), Object[].class), mh -> transformer.transform(mh.asCollector(Object[].class, sig.parameterCount()).asType(sig)));
+  }
+  
+  /**
+   * Ask to box several arguments into an array of java.lang.Object.
+   * @param argumentCount the number of argument to box.
+   * @return the current method builder
+   */
+  public MethodBuilder boxLastArguments(int argumentCount) {
+    MethodType sig = this.sig;
+    MHTransformer transformer = this.transformer;
+    return apply(methodType(sig.returnType(), sig.parameterList().subList(0, sig.parameterCount() - argumentCount))
+                     .appendParameterTypes(Object[].class),
+                 mh -> transformer.transform(mh.asCollector(Object[].class, argumentCount).asType(sig)));
   }
   
   /**
@@ -120,6 +135,12 @@ public class MethodBuilder {
    * @return the current method builder
    */
   public MethodBuilder convertTo(MethodType methodType) {
+    if (sig.parameterCount() != methodType.parameterCount()) {
+      throw new IllegalArgumentException("can not convert " + sig + " to " + methodType);
+    }
+    if (sig.equals(methodType)) {
+      return this;
+    }
     MHTransformer transformer = this.transformer;
     MethodType sig = this.sig;
     return apply(methodType, mh -> transformer.transform(mh.asType(sig)));
@@ -134,7 +155,18 @@ public class MethodBuilder {
    * @see #convertTo(MethodType)
    */
   public MethodBuilder convertTo(Class<?> returnType, Class<?>... parameterTypes) {
-    return convertTo(MethodType.methodType(returnType, parameterTypes));
+    return convertTo(methodType(returnType, parameterTypes));
+  }
+  
+  /**
+   * Ask to convert the return value.
+   * @param returnType the expected return type
+   * @return the current method builder
+   * 
+   * @see #convertTo(MethodType)
+   */
+  public MethodBuilder convertReturnTypeTo(Class<?> returnType) {
+    return convertTo(sig.changeReturnType(returnType));
   }
   
   /**
@@ -176,6 +208,38 @@ public class MethodBuilder {
     MethodType instrType = sig.insertParameterTypes(0, exceptionType);
     MHTransformer transformer = this.transformer;
     return apply(sig, mh -> transformer.transform(catchException(mh, exceptionType, function.apply(methodBuilder(instrType)))));
+  }
+  
+  
+  public MethodBuilder compose(Class<?> returnType, Fun<? super MethodBuilder, ? extends MethodHandle> function) {
+    MethodType instrType = sig.changeReturnType(returnType);
+    MHTransformer transformer = this.transformer;
+    return apply(methodType(sig.returnType(), returnType), mh -> transformer.transform(filterReturnValue(function.apply(methodBuilder(instrType)), mh)));
+  }
+  
+  public MethodBuilder filter(int argumentIndex, Class<?> returnType, Fun<? super MethodBuilder, ? extends MethodHandle> function) {
+    MethodType filterType = methodType(returnType, sig.parameterType(argumentIndex));
+    MHTransformer transformer = this.transformer;
+    return apply(sig.changeParameterType(argumentIndex, returnType),
+        mh -> transformer.transform(filterArguments(mh, argumentIndex, function.apply(methodBuilder(filterType)))));
+  }
+  
+  public MethodBuilder filterLastArguments(int argumentCount, Class<?> fromType, Class<?> toType, Fun<? super MethodBuilder, ? extends MethodHandle> function) {
+    int parameterCount = sig.parameterCount();
+    int firstArgument = parameterCount - argumentCount;
+    Class<?> returnType = sig.returnType();
+    Class<?>[] parameterArray = sig.parameterArray();
+    Arrays.fill(parameterArray, firstArgument, parameterCount, fromType);
+    convertTo(returnType, parameterArray);  // side effect, change this.sig and this.transformer
+    Arrays.fill(parameterArray, firstArgument, parameterCount, toType);
+    MethodType filterType = methodType(toType, fromType);
+    MHTransformer transformer = this.transformer;  // must be get after the call to convertTo
+    return apply(methodType(returnType, parameterArray), mh -> { 
+          MethodHandle filter = function.apply(methodBuilder(filterType));
+          MethodHandle[] filterArray = new MethodHandle[argumentCount];
+          Arrays.fill(filterArray, filter);
+          return transformer.transform(filterArguments(mh, firstArgument, filterArray)); 
+        });
   }
   
   /**
@@ -253,8 +317,8 @@ public class MethodBuilder {
       Lookup lookup = lookup();
       Class<?> thisClass = lookup.lookupClass();
       try {
-        CLASS_CHECK = lookup.findStatic(thisClass, "classCheck", MethodType.methodType(boolean.class, Object.class, Class.class));
-        FALLBACK = lookup.findStatic(thisClass, "fallback", MethodType.methodType(MethodHandle.class, thisClass, Object.class));
+        CLASS_CHECK = lookup.findStatic(thisClass, "classCheck", methodType(boolean.class, Object.class, Class.class));
+        FALLBACK = lookup.findStatic(thisClass, "fallback", methodType(MethodHandle.class, thisClass, Object.class));
       } catch (NoSuchMethodException | IllegalAccessException e) {
         throw new AssertionError();
       }
@@ -267,7 +331,7 @@ public class MethodBuilder {
       super(endPoint.type());
       this.endPoint = endPoint;
       MethodType type = endPoint.type();
-      setTarget(foldArguments(exactInvoker(type), FALLBACK.bindTo(this).asType(MethodType.methodType(MethodHandle.class, type.parameterType(0)))));
+      setTarget(foldArguments(exactInvoker(type), FALLBACK.bindTo(this).asType(methodType(MethodHandle.class, type.parameterType(0)))));
     }
     
     @SuppressWarnings("unused")  // used by a method handle
@@ -289,7 +353,7 @@ public class MethodBuilder {
       Class<?> receiverClass = receiver.getClass();
       
       MethodType endPointType = endPoint.type();
-      MethodHandle test = insertArguments(CLASS_CHECK, 1, receiverClass).asType(MethodType.methodType(boolean.class, endPointType.parameterType(0)));
+      MethodHandle test = insertArguments(CLASS_CHECK, 1, receiverClass).asType(methodType(boolean.class, endPointType.parameterType(0)));
       MethodHandle target = endPoint.asType(endPointType.changeParameterType(0, receiverClass)).asType(endPointType); // insert a cast to help the JIT ?
       MethodHandle gwt = guardWithTest(test, target, callsite.getTarget());
       callsite.setTarget(gwt);

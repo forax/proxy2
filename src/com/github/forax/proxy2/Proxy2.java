@@ -23,10 +23,12 @@ import sun.misc.Unsafe;
 /**
  * A bunch of static factory methods to create proxy factories.
  * 
+ * 
+ * 
  * Unlike java.lang.reflect.Proxy, the implementation doesn't do any caching,
  * so calling {@link #createAnonymousProxyFactory(MethodType, ProxyHandler)}
- * with the same interface as return type of the method type will generated
- * as many proxy classes as the number of calls.
+ * or its siblings with the same interface as return type of the method type
+ * will generated as many proxy classes as the number of calls.
  */
 public class Proxy2 {
   private Proxy2() {
