@@ -12,7 +12,7 @@ The Proxy2 API is composed of only 2 main classes, *Proxy2* and *MethodBuilder*.
 The class *Proxy2* that defines several static methods
 named *createAnonymousProxyFactory* which as their names indicate return a factory of proxy instances (objects).
 To create a proxy, you need to pass an interface that will be the interface implemented by the proxy
-and a *ProxyHandler* that will define the implementation of all the methods od the proxy class.
+and a *ProxyHandler* that will define the implementation of all the methods of the proxy class.
 
 The method bootstrap of the *ProxyHandler* is somewhat lazy and will be called *once* by method the first time
 the implementation of a method is needed.  Because the method is called once, the bootstrap method has no access
