@@ -36,17 +36,11 @@ public class Retrofit {
         @Override
         public CallSite bootstrap(ProxyContext context) throws Throwable {
           Method method = context.method();
-          /*
-          return new ConstantCallSite(
-              MethodHandles.insertArguments(INVOCATIONHANDLER_INVOKE, 2, method)
-                  .asCollector(Object[].class, method.getParameterCount())
-                  .asType(context.type()));
-          */
           return new ConstantCallSite(
               MethodBuilder.methodBuilder(context.type())
+                .convertReturnTypeTo(Object.class)
                 .insertValueAt(2, Method.class, method)
                 .boxLastArguments(method.getParameterCount())
-                .convertReturnTypeTo(Object.class)
                 .thenCallMethodHandle(INVOCATIONHANDLER_INVOKE));
         }
       });

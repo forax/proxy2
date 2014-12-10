@@ -231,13 +231,9 @@ public class Proxy2 {
       public T create(Object... fieldValues) {
         try {
           return type.cast(mh.invokeWithArguments(fieldValues));
+        } catch(RuntimeException | Error e) {
+          throw e;
         } catch (Throwable e) {
-          if (e instanceof RuntimeException) {
-            throw (RuntimeException)e;
-          }
-          if (e instanceof Error) {
-            throw (Error)e;
-          }
           throw new UndeclaredThrowableException(e);
         }
       }
