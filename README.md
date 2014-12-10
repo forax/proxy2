@@ -7,7 +7,9 @@ Better / faster proxy generator than java.lang.reflect.Proxy for Java (require 1
 Getting Started
 ===============
 
-The Proxy2 API is composed of only 2 main classes. The class *Proxy2* that defines several static methods
+The Proxy2 API is composed of only 2 main classes, *Proxy2* and *MethodBuilder*.
+
+The class *Proxy2* that defines several static methods
 named *createAnonymousProxyFactory* which as their names indicate return a factory of proxy instances (objects).
 To create a proxy, you need to pass an interface that will be the interface implemented by the proxy
 and a *ProxyHandler* that will define the implementation of all the methods od the proxy class.
