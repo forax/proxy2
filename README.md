@@ -39,7 +39,7 @@ public interface Hello {
         System.out.println("bootstrap method " + context.method());
         System.out.println("bootstrap type " + context.type());
         MethodHandle target =
-            Methodbuilder.methodBuilder(context.type())
+            MethodBuilder.methodBuilder(context.type())
               .dropFirstParameter()
               .thenCall(MethodHandles.publicLookup(), String.class.getMethod("concat", String.class));
         return new ConstantCallSite(target);
@@ -70,8 +70,8 @@ In order to implement the method *message*, the method *bootstrap* has to provid
 The first object, correspond to the proxy object, the two strings to the two arguments of *message*
 and string returned correspond to the return type of *message*.
 
-Here the implementation decide to call *String.concat*, for that the proxy object is not needed,
-that's why *dropFirstParameter()* is called on the builder before asking to call *String.concat*.
+Here, the implementation call *String.concat*, for that the proxy object is not needed,
+that's why *dropFirstParameter()* is called on the builder to remove the proxy object from the stack before asking to call *String.concat*.
 
 As you can see, the method *bootstrap* is called once even if the method *message* is called twice,
 because the method *bootstrap* acts as a linker between the abstract method defined
