@@ -48,8 +48,9 @@
              destdir="output/classes"
              classpath="${asm.jar}"
              debug="on"
-      	     includeantruntime="no"
-	    />
+      	     includeantruntime="no">
+      	<compilerarg value="-XDignore.symbol.file"/>
+      </javac>
     	<mkdir dir="output/build"/>
     	<mkdir dir="output/build/classes"/>
     	<javac srcdir="build/src"
