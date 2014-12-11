@@ -26,7 +26,7 @@ import sun.misc.Unsafe;
  * 
  * 
  * Unlike java.lang.reflect.Proxy, the implementation doesn't do any caching,
- * so calling {@link #createAnonymousProxyFactory(MethodType, ProxyHandler)}
+ * so calling {@link #createAnonymousProxyFactory(Lookup, MethodType, ProxyHandler)}
  * or its siblings with the same interface as return type of the method type
  * will generated as many proxy classes as the number of calls.
  */
@@ -221,11 +221,11 @@ public class Proxy2 {
    * @param handler an interface that specifies how a proxy method is linked to its implementation.
    * @return a proxy factory that will create proxy instance.
    * 
-   * @see #createAnonymousProxyFactory(MethodType, ProxyHandler)
+   * @see #createAnonymousProxyFactory(Lookup, MethodType, ProxyHandler)
    * @see #createAnonymousProxyFactory(Class, ProxyHandler)
    */
   public static <T> ProxyFactory<T> createAnonymousProxyFactory(Class<? extends T> type, Class<?>[] fieldTypes, ProxyHandler handler) {
-    MethodHandle mh = createAnonymousProxyFactory(MethodType.methodType(type, fieldTypes), handler);
+    MethodHandle mh = createAnonymousProxyFactory(MethodHandles.publicLookup(), MethodType.methodType(type, fieldTypes), handler);
     return new ProxyFactory<T>() {   // don't use a lambda here to avoid cycle when retro-weaving
       @Override
       public T create(Object... fieldValues) {
@@ -287,16 +287,21 @@ public class Proxy2 {
    * The returned {@link MethodHandle} will have its type being equals to the {@code methodType}
    * taken as argument.
    * 
+   * @param lookup access token used to access to the interface methods
    * @param methodType the parameter types of this {@link MethodType} described the type of the fields
    *                   and the return type the interface implemented by the proxy. 
    * @param handler an interface that specifies how a proxy method is linked to its implementation.
    * @return a method handle that if {@link MethodHandle#invokeExact(Object...) called} will create
    *         a proxy instance of a class implementing the return interfaces. 
+   * @throws IllegalArgumentException if the proxy interface is not visible from the lookup object.
    * 
    * @see #createAnonymousProxyFactory(Class, Class[], ProxyHandler)
    */
-  public static MethodHandle createAnonymousProxyFactory(MethodType methodType, ProxyHandler handler) {
+  public static MethodHandle createAnonymousProxyFactory(Lookup lookup, MethodType methodType, ProxyHandler handler) {
     Class<?> interfaze = methodType.returnType();
+    if (lookup.in(interfaze).lookupModes() == 0) {
+      throw new IllegalArgumentException("interface " + interfaze + " is not visible from " + lookup);
+    }
 
     // if the proxy is in java.lang.invoke and the interface is not visible, the OpenJDK 7 VM crashes !
     String proxyName = (!IS_1_8 && !Modifier.isPublic(interfaze.getModifiers()))?

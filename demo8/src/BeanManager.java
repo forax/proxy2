@@ -1,9 +1,10 @@
+import static com.github.forax.proxy2.MethodBuilder.methodBuilder;
+import static java.lang.invoke.MethodHandles.publicLookup;
+import static java.lang.invoke.MethodType.methodType;
+
 import java.lang.invoke.CallSite;
 import java.lang.invoke.ConstantCallSite;
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodHandles.Lookup;
-import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.util.AbstractMap;
@@ -18,19 +19,18 @@ public class BeanManager {
   final ClassValue<MethodHandle> beanFactories = new ClassValue<MethodHandle>() {
     @Override
     protected MethodHandle computeValue(Class<?> type) {
-      return Proxy2.createAnonymousProxyFactory(MethodType.methodType(type, HashMap.class), new ProxyHandler.Default() {
+      return Proxy2.createAnonymousProxyFactory(publicLookup(), methodType(type, HashMap.class), new ProxyHandler.Default() {
         @Override
         public CallSite bootstrap(ProxyContext context) throws Throwable {
           MethodHandle target;
-          Lookup lookup = MethodHandles.publicLookup();
           Method method = context.method();
-          MethodBuilder builder = MethodBuilder.methodBuilder(context.type());
+          MethodBuilder builder = methodBuilder(context.type());
           switch(method.getName()) {
           case "toString":
             target = builder
                 .dropFirstParameter()
                 .convertTo(String.class, AbstractMap.class)  // FIXME
-                .thenCall(lookup, HashMap.class.getMethod("toString"));
+                .thenCall(publicLookup(), HashMap.class.getMethod("toString"));
             break;
           default:
             if (method.getParameterCount() == 0) { 
@@ -38,14 +38,14 @@ public class BeanManager {
                   .dropFirstParameter()
                   .insertValueAt(1, Object.class, method.getName())
                   .convertTo(Object.class, HashMap.class, Object.class)
-                  .thenCall(lookup, HashMap.class.getMethod("get", Object.class));
+                  .thenCall(publicLookup(), HashMap.class.getMethod("get", Object.class));
             } else {                               
               target = builder                     // setter
                   .before(b -> b
                       .dropFirstParameter()
                       .insertValueAt(1, Object.class, method.getName())
                       .convertTo(Object.class, HashMap.class, Object.class, Object.class)
-                      .thenCall(lookup, HashMap.class.getMethod("put", Object.class, Object.class)))
+                      .thenCall(publicLookup(), HashMap.class.getMethod("put", Object.class, Object.class)))
                   .dropParameterAt(1)
                   .dropParameterAt(1)
                   .convertTo(method.getReturnType(), Object.class)

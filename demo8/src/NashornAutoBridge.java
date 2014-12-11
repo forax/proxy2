@@ -29,7 +29,7 @@ public class NashornAutoBridge {
   private static final ClassValue<MethodHandle> CACHE = new ClassValue<MethodHandle>() {
     @Override
     protected MethodHandle computeValue(Class<?> type) {
-      MethodHandle mh = Proxy2.createAnonymousProxyFactory(methodType(type, ScriptObjectMirror.class), new ProxyHandler.Default() {
+      MethodHandle mh = Proxy2.createAnonymousProxyFactory(publicLookup(), methodType(type, ScriptObjectMirror.class), new ProxyHandler.Default() {
         @Override
         public CallSite bootstrap(ProxyContext context) throws Throwable {
           Method method = context.method();

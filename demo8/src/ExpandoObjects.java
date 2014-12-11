@@ -1,3 +1,16 @@
+import static java.lang.invoke.MethodHandles.arrayElementGetter;
+import static java.lang.invoke.MethodHandles.arrayElementSetter;
+import static java.lang.invoke.MethodHandles.constant;
+import static java.lang.invoke.MethodHandles.dropArguments;
+import static java.lang.invoke.MethodHandles.exactInvoker;
+import static java.lang.invoke.MethodHandles.foldArguments;
+import static java.lang.invoke.MethodHandles.guardWithTest;
+import static java.lang.invoke.MethodHandles.identity;
+import static java.lang.invoke.MethodHandles.insertArguments;
+import static java.lang.invoke.MethodHandles.lookup;
+import static java.lang.invoke.MethodHandles.publicLookup;
+import static java.lang.invoke.MethodType.methodType;
+
 import java.lang.invoke.CallSite;
 import java.lang.invoke.ConstantCallSite;
 import java.lang.invoke.MethodHandle;
@@ -131,11 +144,11 @@ public class ExpandoObjects {
       Lookup lookup = MethodHandles.lookup();
       try {
         GET_PROPERTY = lookup.findVirtual(HiddenClass.class, "getProperty",
-            MethodType.methodType(Object.class, Object[].class, String.class));
+            methodType(Object.class, Object[].class, String.class));
         CALL = lookup.findVirtual(HiddenClass.class, "call",
-            MethodType.methodType(MethodHandle.class, Object[].class, String.class));
+            methodType(MethodHandle.class, Object[].class, String.class));
         SET_PROPERTY = lookup.findStatic(HiddenClass.class, "setProperty",
-            MethodType.methodType(void.class, Object.class, HiddenClass.class, Object[].class, MethodHandle.class, MethodHandle.class, String.class, Object.class));
+            methodType(void.class, Object.class, HiddenClass.class, Object[].class, MethodHandle.class, MethodHandle.class, String.class, Object.class));
       } catch (NoSuchMethodException | IllegalAccessException e) {
         throw new AssertionError(e);
       }
@@ -173,24 +186,24 @@ public class ExpandoObjects {
     
     MethodHandle getter() {
       return accessor(GETTERS, array -> GETTERS = array, slot -> 
-        MethodHandles.dropArguments(
-          MethodHandles.insertArguments(
-              MethodHandles.arrayElementGetter(Object[].class),
+        dropArguments(
+          insertArguments(
+              arrayElementGetter(Object[].class),
               1, slot),
           0, Object.class, HiddenClass.class));
     }
     
     MethodHandle setter() {
       MethodHandle setter =  accessor(SETTERS, array -> SETTERS = array, slot -> 
-        MethodHandles.dropArguments(
-          MethodHandles.insertArguments(
-              MethodHandles.arrayElementSetter(Object[].class),
+        dropArguments(
+          insertArguments(
+              arrayElementSetter(Object[].class),
               1, slot),
           0, Object.class, HiddenClass.class));
       if (switchPoint == null) {
         return setter;
       }
-      return MethodHandles.foldArguments(setter, INVALIDATE.bindTo(this));
+      return foldArguments(setter, INVALIDATE.bindTo(this));
     }
     
     void invalidate() {
@@ -205,8 +218,8 @@ public class ExpandoObjects {
     private static MethodHandle INVALIDATE;
     static {
       try {
-        INVALIDATE = MethodHandles.lookup().findVirtual(Property.class, "invalidate",
-            MethodType.methodType(void.class));
+        INVALIDATE = lookup().findVirtual(Property.class, "invalidate",
+            methodType(void.class));
       } catch (NoSuchMethodException | IllegalAccessException e) {
         throw new AssertionError(e);
       }
@@ -224,7 +237,7 @@ public class ExpandoObjects {
   private static final ClassValue<MethodHandle> PROXY_FACTORY = new ClassValue<MethodHandle>() {
     @Override
     protected MethodHandle computeValue(Class<?> type) {
-      return Proxy2.createAnonymousProxyFactory(MethodType.methodType(type, HiddenClass.class, Object[].class),
+      return Proxy2.createAnonymousProxyFactory(publicLookup(), methodType(type, HiddenClass.class, Object[].class),
           new ProxyHandler.Default() {
         @Override
         public boolean isMutable(int fieldIndex, Class<?> fieldType) {
@@ -239,18 +252,18 @@ public class ExpandoObjects {
             MethodHandle target;
             switch(name) {
             case "getHiddenClass":
-              target = MethodHandles.dropArguments(
-                  MethodHandles.dropArguments(
-                    MethodHandles.identity(HiddenClass.class),
+              target = dropArguments(
+                  dropArguments(
+                    identity(HiddenClass.class),
                     1, Object[].class),
                   0, Object.class);
               break;
             case "$":
               if (parameterCount == 1) { // get property
-                target = MethodHandles.dropArguments(HiddenClass.GET_PROPERTY,
+                target = dropArguments(HiddenClass.GET_PROPERTY,
                     0, Object.class);
               } else {  // set property
-                target = MethodHandles.insertArguments(HiddenClass.SET_PROPERTY, 3,
+                target = insertArguments(HiddenClass.SET_PROPERTY, 3,
                     context.findFieldSetter(0, HiddenClass.class),
                     context.findFieldSetter(1, Object[].class));
               }
@@ -264,27 +277,27 @@ public class ExpandoObjects {
           if (name.startsWith("get") && parameterCount == 0) {
             String property = propertyName(name);
             MethodType methodType =
-                MethodType.methodType(method.getReturnType(), Object.class, HiddenClass.class, Object[].class);
+                methodType(method.getReturnType(), Object.class, HiddenClass.class, Object[].class);
             return new InliningCacheCallSite(property, methodType, InliningCacheCallSite.GET_FALLBACK);
           }
           
           if (name.startsWith("set") && parameterCount == 1) {
             String property = propertyName(name);
             MethodType methodType =
-                MethodType.methodType(void.class, Object.class, HiddenClass.class, Object[].class, method.getParameterTypes()[0]);
+                methodType(void.class, Object.class, HiddenClass.class, Object[].class, method.getParameterTypes()[0]);
             return new InliningCacheCallSite(property, methodType,
-                MethodHandles.insertArguments(InliningCacheCallSite.SET_FALLBACK,
+                insertArguments(InliningCacheCallSite.SET_FALLBACK,
                     4, context.findFieldSetter(0, HiddenClass.class),
                        context.findFieldSetter(1, Object[].class)));
           }
           
           MethodType methodType =
-              MethodType.methodType(MethodHandle.class, Object.class, HiddenClass.class, Object[].class);
+              methodType(MethodHandle.class, Object.class, HiddenClass.class, Object[].class);
           InliningCacheCallSite callSite = new InliningCacheCallSite(method.getName(), methodType, InliningCacheCallSite.CALL_FALLBACK);
           return new ConstantCallSite(
-              MethodHandles.foldArguments(
-                  MethodHandles.dropArguments(
-                      MethodHandles.exactInvoker(MethodType.methodType(method.getReturnType(), method.getParameterTypes())),
+              foldArguments(
+                  dropArguments(
+                      exactInvoker(methodType(method.getReturnType(), method.getParameterTypes())),
                       1, Object.class, HiddenClass.class, Object[].class),
                   callSite.dynamicInvoker()));
         }
@@ -317,16 +330,16 @@ public class ExpandoObjects {
       SwitchPoint switchPoint = property.switchPoint;
       MethodHandle target;
       if (switchPoint != null && retry++ < MAX_RETRY) {
-        MethodHandle mh = MethodHandles.dropArguments(
-            MethodHandles.constant(MethodHandle.class, value),
+        MethodHandle mh = dropArguments(
+            constant(MethodHandle.class, value),
             0, Object.class, HiddenClass.class, Object[].class);
-        target = MethodHandles.guardWithTest(CHECK_HIDDEN_CLASS.bindTo(hiddenClass),
+        target = guardWithTest(CHECK_HIDDEN_CLASS.bindTo(hiddenClass),
             switchPoint.guardWithTest(mh, fallback),
             fallback);
       } else { // too many different hidden classes or too many changes
         property.switchPoint = null;
-        target = MethodHandles.dropArguments(
-            MethodHandles.insertArguments(HiddenClass.CALL, 2, propertyName),
+        target = dropArguments(
+            insertArguments(HiddenClass.CALL, 2, propertyName),
             0, Object.class);
       }
       setTarget(target);
@@ -340,12 +353,12 @@ public class ExpandoObjects {
       }
       MethodHandle target;
       if (retry++ < MAX_RETRY) {
-        target = MethodHandles.guardWithTest(CHECK_HIDDEN_CLASS.bindTo(hiddenClass),
+        target = guardWithTest(CHECK_HIDDEN_CLASS.bindTo(hiddenClass),
             property.getter().asType(type()),
             fallback);
       } else {  // too many different hidden classes
-        target = MethodHandles.dropArguments(
-            MethodHandles.insertArguments(HiddenClass.GET_PROPERTY, 2, propertyName),
+        target = dropArguments(
+            insertArguments(HiddenClass.GET_PROPERTY, 2, propertyName),
             0, Object.class).asType(type());
       }
       setTarget(target);
@@ -364,11 +377,11 @@ public class ExpandoObjects {
       
       MethodHandle target;
       if (retry++ < MAX_RETRY) {  
-        target = MethodHandles.guardWithTest(CHECK_HIDDEN_CLASS.bindTo(hiddenClass),
+        target = guardWithTest(CHECK_HIDDEN_CLASS.bindTo(hiddenClass),
             property.setter().asType(type()),
             fallback);
       } else {
-        target = MethodHandles.insertArguments(HiddenClass.SET_PROPERTY,
+        target = insertArguments(HiddenClass.SET_PROPERTY,
             3, hiddenClassSetter, stashSetter, propertyName).asType(type());
       }
       setTarget(target);
@@ -385,13 +398,13 @@ public class ExpandoObjects {
       Lookup lookup = MethodHandles.lookup();
       try {
         CALL_FALLBACK = lookup.findVirtual(InliningCacheCallSite.class, "callFallback",
-            MethodType.methodType(MethodHandle.class, Object.class, HiddenClass.class, Object[].class));
+            methodType(MethodHandle.class, Object.class, HiddenClass.class, Object[].class));
         GET_FALLBACK = lookup.findVirtual(InliningCacheCallSite.class, "getFallback",
-            MethodType.methodType(Object.class, Object.class, HiddenClass.class, Object[].class));
+            methodType(Object.class, Object.class, HiddenClass.class, Object[].class));
         SET_FALLBACK = lookup.findVirtual(InliningCacheCallSite.class, "setFallback",
-            MethodType.methodType(void.class, Object.class, HiddenClass.class, Object[].class, MethodHandle.class, MethodHandle.class, Object.class));
+            methodType(void.class, Object.class, HiddenClass.class, Object[].class, MethodHandle.class, MethodHandle.class, Object.class));
         CHECK_HIDDEN_CLASS = lookup.findStatic(InliningCacheCallSite.class, "checkHiddenClass",
-            MethodType.methodType(boolean.class, HiddenClass.class, Object.class, HiddenClass.class));
+            methodType(boolean.class, HiddenClass.class, Object.class, HiddenClass.class));
       } catch (NoSuchMethodException | IllegalAccessException e) {
         throw new AssertionError(e);
       }
@@ -448,10 +461,11 @@ public class ExpandoObjects {
     
     
     // and with methods
-    MethodHandle hello = MethodHandles.lookup().findStatic(ExpandoObjects.class, "hello",
-        MethodType.methodType(void.class, String.class));
-    MethodHandle hello2 = MethodHandles.lookup().findStatic(ExpandoObjects.class, "hello2",
-        MethodType.methodType(void.class, String.class));
+    Lookup lookup = lookup();
+    MethodHandle hello = lookup.findStatic(ExpandoObjects.class, "hello",
+        methodType(void.class, String.class));
+    MethodHandle hello2 = lookup.findStatic(ExpandoObjects.class, "hello2",
+        methodType(void.class, String.class));
     Hello h = createExpando(Hello.class);
     Runnable runnable = () -> h.hello("expando");
     h.$("hello", hello);

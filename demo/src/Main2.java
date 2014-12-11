@@ -1,14 +1,15 @@
 import static com.github.forax.proxy2.MethodBuilder.methodBuilder;
+import static com.github.forax.proxy2.Proxy2.createAnonymousProxyFactory;
+import static java.lang.invoke.MethodHandles.publicLookup;
+import static java.lang.invoke.MethodType.methodType;
 
 import java.lang.invoke.CallSite;
 import java.lang.invoke.ConstantCallSite;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 import java.lang.reflect.UndeclaredThrowableException;
 
-import com.github.forax.proxy2.Proxy2;
 import com.github.forax.proxy2.Proxy2.ProxyContext;
 import com.github.forax.proxy2.Proxy2.ProxyHandler;
 
@@ -21,7 +22,7 @@ public class Main2 {
       new ClassValue<MethodHandle>() {
         @Override
         protected MethodHandle computeValue(final Class<?> type) {
-          return Proxy2.createAnonymousProxyFactory(MethodType.methodType(type, type), 
+          return createAnonymousProxyFactory(publicLookup(), methodType(type, type), 
               new ProxyHandler.Default() {
                 @Override
                 public boolean override(Method method) { return true; }

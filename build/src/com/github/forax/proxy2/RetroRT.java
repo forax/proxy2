@@ -51,7 +51,7 @@ public class RetroRT {
                                      MethodType sig, MethodHandle impl, MethodType reifiedSig) throws Throwable {
     List<Class<?>> capturedTypes = type.parameterList();
     MethodHandle target = impl.asType(reifiedSig.insertParameterTypes(0, capturedTypes)); // apply generic casts
-    MethodHandle mh = Proxy2.createAnonymousProxyFactory(type, new LambdaProxyHandler(target, capturedTypes));
+    MethodHandle mh = Proxy2.createAnonymousProxyFactory(lookup, type, new LambdaProxyHandler(target, capturedTypes));
     if (type.parameterCount() == 0) { // no capture
       return new ConstantCallSite(MethodHandles.constant(type.returnType(), mh.invoke()));
     }
