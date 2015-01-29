@@ -9,10 +9,13 @@ import java.lang.invoke.CallSite;
 import java.lang.invoke.ConstantCallSite;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles.Lookup;
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.function.IntConsumer;
 
 import javax.script.ScriptEngine;
@@ -25,58 +28,7 @@ import com.github.forax.proxy2.Proxy2;
 import com.github.forax.proxy2.Proxy2.ProxyContext;
 import com.github.forax.proxy2.Proxy2.ProxyHandler;
 
-public class NashornAutoBridge {
-  private static final ClassValue<MethodHandle> CACHE = new ClassValue<MethodHandle>() {
-    @Override
-    protected MethodHandle computeValue(Class<?> type) {
-      MethodHandle mh = Proxy2.createAnonymousProxyFactory(publicLookup(), methodType(type, ScriptObjectMirror.class), new ProxyHandler.Default() {
-        @Override
-        public CallSite bootstrap(ProxyContext context) throws Throwable {
-          Method method = context.method();
-          String name = method.getName();
-          MethodHandle target;
-          if (name.equals("__getScriptObjectMirror__")) {
-            target = methodBuilder(context.type())
-                .dropFirstParameter()
-                .thenCallIdentity();
-          } else {
-            if (name.startsWith("get")) {
-              String property = propertyName(name);
-              target = methodBuilder(context.type())
-                  .dropFirstParameter()
-                  .convertReturnTypeTo(Object.class)
-                  .insertValueAt(1, String.class, property)
-                  .compose(Object.class, b -> b.thenCallMethodHandle(GET_MEMBER))
-                  .thenCallMethodHandle(WRAP.bindTo(method.getReturnType()));
-            } else {
-              if (name.startsWith("set")) {
-                String property = propertyName(name);
-                target = methodBuilder(context.type())
-                    .dropFirstParameter()
-                    .convertTo(void.class, ScriptObjectMirror.class, Object.class)
-                    .insertValueAt(1, String.class, property)
-                    .filter(2, Object.class, b -> b.thenCallMethodHandle(UNWRAP))
-                    .thenCallMethodHandle(SET_MEMBER);
-              } else {
-                int argumentCount = method.getParameterCount();
-                target = methodBuilder(context.type())
-                    .dropFirstParameter()
-                    .convertReturnTypeTo(Object.class)
-                    .insertValueAt(1, String.class, name)
-                    .filterLastArguments(argumentCount, Object.class, Object.class, b -> b.thenCallMethodHandle(UNWRAP))
-                    .boxLastArguments(argumentCount)
-                    .compose(Object.class, b -> b.thenCallMethodHandle(CALL_MEMBER))
-                    .thenCallMethodHandle(WRAP.bindTo(method.getReturnType()));
-              }
-            }
-          }
-          return new ConstantCallSite(target);
-        }
-      });
-      return mh.asType(methodType(Object.class, ScriptObjectMirror.class));
-    }
-  };
-  
+public class NashornAutoBridgeProxy1 {
   static String propertyName(String name) {
     String property = name.substring(3);
     return Character.toLowerCase(property.charAt(0)) + property.substring(1);
@@ -97,13 +49,26 @@ public class NashornAutoBridge {
   }
   
   private static Object createBridge(Class<?> type, ScriptObjectMirror mirror) {
-    try {
-      return CACHE.get(type).invokeExact(mirror);
-    } catch (Error | RuntimeException e) {
-      throw e;
-    } catch(Throwable e) {
-      throw new UndeclaredThrowableException(e);
-    }
+    return type.cast(Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[] { type },
+        (Object proxy, Method method, Object[] args) -> {
+            String name = method.getName();
+            if (name.equals("__getScriptObjectMirror__")) {
+              return mirror;
+            }
+            if (name.startsWith("get")) {
+              String property = propertyName(name);
+              return wrap(method.getReturnType(), mirror.getMember(property));
+            }
+            if (name.startsWith("set")) {
+              String property = propertyName(name);
+              mirror.setMember(property, unwrap(args[0]));
+              return null;
+            }
+            if (args != null) {
+              Arrays.setAll(args, i -> unwrap(args[i]));
+            }
+            return wrap(method.getReturnType(), mirror.callMember(name, args));
+        }));
   }
   
   static final MethodHandle WRAP, UNWRAP,
@@ -111,9 +76,9 @@ public class NashornAutoBridge {
   static {
     Lookup lookup = lookup();
     try {
-      WRAP = lookup.findStatic(NashornAutoBridge.class, "wrap",
+      WRAP = lookup.findStatic(NashornAutoBridgeProxy1.class, "wrap",
           methodType(Object.class, Class.class, Object.class));
-      UNWRAP = lookup.findStatic(NashornAutoBridge.class, "unwrap",
+      UNWRAP = lookup.findStatic(NashornAutoBridgeProxy1.class, "unwrap",
           methodType(Object.class, Object.class));
       GET_MEMBER = publicLookup().findVirtual(ScriptObjectMirror.class, "getMember",
           methodType(Object.class, String.class));

@@ -12,7 +12,7 @@ import com.github.forax.proxy2.Proxy2.ProxyFactory;
 import com.github.forax.proxy2.Proxy2.ProxyHandler;
 
 public interface Delegation {
-  public void display(String message);
+  public void println(String message);
   
   public static void main(String[] args) {
     ProxyFactory<Delegation> factory = Proxy2.createAnonymousProxyFactory(Delegation.class, new Class<?>[] { PrintStream.class },
@@ -28,6 +28,6 @@ public interface Delegation {
         });
     
     Delegation hello = factory.create(System.out);
-    hello.display("hello proxy2");
+    hello.println("hello proxy2");
   }
 }

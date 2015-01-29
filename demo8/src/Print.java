@@ -12,7 +12,7 @@ import com.github.forax.proxy2.Proxy2.ProxyFactory;
 import com.github.forax.proxy2.Proxy2.ProxyHandler;
 
 public interface Print {
-  public void display(String message);
+  public void println(String message);
   
   public static void main(String[] args) {
     ProxyFactory<Print> factory = Proxy2.createAnonymousProxyFactory(Print.class, new ProxyHandler.Default() { 
@@ -28,6 +28,6 @@ public interface Print {
     });
     
     Print hello = factory.create();
-    hello.display("hello proxy2");
+    hello.println("hello proxy2");
   }
 }

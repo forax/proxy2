@@ -13,7 +13,8 @@ import com.github.forax.proxy2.Proxy2.ProxyHandler;
 
 public interface Intercept {
   public static void intercept(int v1, int v2) {
-    System.out.println("intercepted " + v1 + " " + v2);
+    //System.out.println("intercepted " + v1 + " " + v2);
+    throw null;
   }
   
   public static void main(String[] args) {
