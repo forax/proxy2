@@ -8,7 +8,6 @@ import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.List;
 
 import com.github.forax.proxy2.Proxy2;
 import com.github.forax.proxy2.Proxy2.ProxyContext;
@@ -17,9 +16,9 @@ import com.github.forax.proxy2.Proxy2.ProxyHandler;
 public class RetroRT {
   static class LambdaProxyHandler implements ProxyHandler {
     private final MethodHandle target;
-    private final List<Class<?>> capturedTypes;
+    private final Class<?>[] capturedTypes;
     
-    LambdaProxyHandler(MethodHandle target, List<Class<?>> capturedTypes) {
+    LambdaProxyHandler(MethodHandle target, Class<?>[] capturedTypes) {
       this.target = target;
       this.capturedTypes = capturedTypes;
     }
@@ -49,7 +48,7 @@ public class RetroRT {
   
   public static CallSite metafactory(Lookup lookup, String name, MethodType type,
                                      MethodType sig, MethodHandle impl, MethodType reifiedSig) throws Throwable {
-    List<Class<?>> capturedTypes = type.parameterList();
+    Class<?>[] capturedTypes = type.parameterArray();
     MethodHandle target = impl.asType(reifiedSig.insertParameterTypes(0, capturedTypes)); // apply generic casts
     MethodHandle mh = Proxy2.createAnonymousProxyFactory(lookup, type, new LambdaProxyHandler(target, capturedTypes));
     if (type.parameterCount() == 0) { // no capture
