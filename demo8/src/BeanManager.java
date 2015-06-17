@@ -28,28 +28,28 @@ public class BeanManager {
           switch(method.getName()) {
           case "toString":
             target = builder
-                .dropFirstParameter()
+                .dropFirst()
                 .convertTo(String.class, AbstractMap.class)  // FIXME
-                .thenCall(publicLookup(), HashMap.class.getMethod("toString"));
+                .unreflect(publicLookup(), HashMap.class.getMethod("toString"));
             break;
           default:
             if (method.getParameterCount() == 0) { 
               target = builder                     // getter
-                  .dropFirstParameter()
-                  .insertValueAt(1, Object.class, method.getName())
+                  .dropFirst()
+                  .insertAt(1, Object.class, method.getName())
                   .convertTo(Object.class, HashMap.class, Object.class)
-                  .thenCall(publicLookup(), HashMap.class.getMethod("get", Object.class));
+                  .unreflect(publicLookup(), HashMap.class.getMethod("get", Object.class));
             } else {                               
               target = builder                     // setter
                   .before(b -> b
-                      .dropFirstParameter()
-                      .insertValueAt(1, Object.class, method.getName())
+                      .dropFirst()
+                      .insertAt(1, Object.class, method.getName())
                       .convertTo(Object.class, HashMap.class, Object.class, Object.class)
-                      .thenCall(publicLookup(), HashMap.class.getMethod("put", Object.class, Object.class)))
-                  .dropParameterAt(1)
-                  .dropParameterAt(1)
+                      .unreflect(publicLookup(), HashMap.class.getMethod("put", Object.class, Object.class)))
+                  .dropAt(1)
+                  .dropAt(1)
                   .convertTo(method.getReturnType(), Object.class)
-                  .thenCallIdentity();
+                  .callIdentity();
             }
           }
           return new ConstantCallSite(target);

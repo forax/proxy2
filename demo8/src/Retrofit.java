@@ -41,9 +41,9 @@ public class Retrofit {
           return new ConstantCallSite(
               methodBuilder(context.type())
                 .convertReturnTypeTo(Object.class)
-                .insertValueAt(2, Method.class, method)
-                .boxLastArguments(method.getParameterCount())
-                .thenCallMethodHandle(INVOCATIONHANDLER_INVOKE));
+                .insertAt(2, Method.class, method)
+                .boxLast(method.getParameterCount())
+                .call(INVOCATIONHANDLER_INVOKE));
         }
       });
       return mh.asType(methodType(Object.class, InvocationHandler.class));

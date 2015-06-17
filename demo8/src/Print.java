@@ -20,9 +20,9 @@ public interface Print {
       public CallSite bootstrap(ProxyContext context) throws Throwable {
         MethodHandle target =
             methodBuilder(context.type())
-              .dropFirstParameter()
-              .insertValueAt(0, PrintStream.class, System.out)
-              .thenCall(publicLookup(), PrintStream.class.getMethod("println", String.class));
+              .dropFirst()
+              .insertAt(0, PrintStream.class, System.out)
+              .unreflect(publicLookup(), PrintStream.class.getMethod("println", String.class));
         return new ConstantCallSite(target);
       }
     });

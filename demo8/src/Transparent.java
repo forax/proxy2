@@ -19,8 +19,8 @@ public interface Transparent {
           public CallSite bootstrap(ProxyContext context) throws Throwable {
             MethodHandle target =
               methodBuilder(context.type())
-                .dropFirstParameter()
-                .thenCall(publicLookup(), context.method());
+                .dropFirst()
+                .unreflect(publicLookup(), context.method());
             return new ConstantCallSite(target);
           }
         });

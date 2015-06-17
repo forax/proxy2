@@ -21,8 +21,8 @@ public interface Delegation {
           public CallSite bootstrap(ProxyContext context) throws Throwable {
             MethodHandle target =
               methodBuilder(context.type())
-                .dropFirstParameter()
-                .thenCall(publicLookup(), PrintStream.class.getMethod("println", String.class));
+                .dropFirst()
+                .unreflect(publicLookup(), PrintStream.class.getMethod("println", String.class));
             return new ConstantCallSite(target);
           }
         });

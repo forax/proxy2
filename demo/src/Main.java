@@ -30,8 +30,8 @@ public class Main {
             System.out.println("require implementation of " + context.method());
             
             MethodHandle target = methodBuilder(context.type())
-                .dropFirstParameter()  // drop the proxy object
-                .thenCallIdentity();   // then return the value taken as argument
+                .dropFirst()  // drop the proxy object
+                .callIdentity();   // then return the value taken as argument
             return new ConstantCallSite(target);
           }
         });

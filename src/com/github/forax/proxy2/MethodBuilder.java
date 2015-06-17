@@ -66,7 +66,7 @@ public class MethodBuilder {
    *    }
    * </pre>
    * 
-   * @param methodType the method type that the {@link #thenCallMethodHandle(MethodHandle) resulting method handle}.
+   * @param methodType the method type that the {@link #call(MethodHandle) resulting method handle}.
    * @return a new method builder
    */
   public static MethodBuilder methodBuilder(MethodType methodType) {
@@ -77,7 +77,7 @@ public class MethodBuilder {
    * Ask to box all arguments into an array of java.lang.Object.
    * @return the current method builder
    */
-  public MethodBuilder boxAllArguments() {
+  public MethodBuilder boxAll() {
     MethodType sig = this.sig;
     MHTransformer transformer = this.transformer;
     return apply(methodType(sig.returnType(), Object[].class), mh -> transformer.transform(mh.asCollector(Object[].class, sig.parameterCount()).asType(sig)));
@@ -88,7 +88,7 @@ public class MethodBuilder {
    * @param argumentCount the number of argument to box.
    * @return the current method builder
    */
-  public MethodBuilder boxLastArguments(int argumentCount) {
+  public MethodBuilder boxLast(int argumentCount) {
     MethodType sig = this.sig;
     MHTransformer transformer = this.transformer;
     return apply(methodType(sig.returnType(), sig.parameterList().subList(0, sig.parameterCount() - argumentCount))
@@ -103,7 +103,7 @@ public class MethodBuilder {
    * @param value the value to insert
    * @return the current method builder
    */
-  public <T> MethodBuilder insertValueAt(int parameterIndex, Class<T> type, T value) {
+  public <T> MethodBuilder insertAt(int parameterIndex, Class<T> type, T value) {
     MHTransformer transformer = this.transformer;
     return apply(sig.insertParameterTypes(parameterIndex, type), mh -> transformer.transform(insertArguments(mh, parameterIndex, value)));
   }
@@ -112,10 +112,10 @@ public class MethodBuilder {
    * Ask to drop the first parameter.
    * @return the current method builder
    * 
-   * @see #dropParameterAt(int)
+   * @see #dropAt(int)
    */
-  public MethodBuilder dropFirstParameter() {
-    return dropParameterAt(0);
+  public MethodBuilder dropFirst() {
+    return dropAt(0);
   }
   
   /**
@@ -123,10 +123,20 @@ public class MethodBuilder {
    * @param parameterIndex position of the dropped parameter
    * @return the current method builder
    */
-  public MethodBuilder dropParameterAt(int parameterIndex) {
+  public MethodBuilder dropAt(int parameterIndex) {
     Class<?> type = sig.parameterType(parameterIndex);
     MHTransformer transformer = this.transformer;
     return apply(sig.dropParameterTypes(parameterIndex, parameterIndex + 1), mh -> transformer.transform(dropArguments(mh, parameterIndex, type)));
+  }
+  
+  /**
+   * Ask to drop all parameters.
+   * @return the current method builder
+   */
+  public MethodBuilder dropAll() {
+    Class<?>[] types = sig.parameterArray();
+    MHTransformer transformer = this.transformer;
+    return apply(methodType(sig.returnType()), mh -> transformer.transform(dropArguments(mh, 0, types)));
   }
   
   /**
@@ -224,7 +234,7 @@ public class MethodBuilder {
         mh -> transformer.transform(filterArguments(mh, argumentIndex, function.apply(methodBuilder(filterType)))));
   }
   
-  public MethodBuilder filterLastArguments(int argumentCount, Class<?> fromType, Class<?> toType, Fun<? super MethodBuilder, ? extends MethodHandle> function) {
+  public MethodBuilder filterLast(int argumentCount, Class<?> fromType, Class<?> toType, Fun<? super MethodBuilder, ? extends MethodHandle> function) {
     int parameterCount = sig.parameterCount();
     int firstArgument = parameterCount - argumentCount;
     Class<?> returnType = sig.returnType();
@@ -251,7 +261,7 @@ public class MethodBuilder {
    * @throws NoSuchFieldException throws if a field is not visible.
    * @throws IllegalAccessException throws if a type or a member of a type is not visible.
    */
-  public MethodHandle thenCallMethodHandle(MethodHandle target) throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
+  public MethodHandle call(MethodHandle target) throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
     MethodType targetType = target.type();
     if (!targetType.equals(sig)) {
       throw new WrongMethodTypeException("target type " + targetType + " is not equals to current type " + sig);
@@ -271,7 +281,7 @@ public class MethodBuilder {
    * @throws NoSuchFieldException throws if a field is not visible.
    * @throws IllegalAccessException throws if a type or a member of a type is not visible.
    */
-  public MethodHandle thenCall(Lookup lookup, Method method) throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
+  public MethodHandle unreflect(Lookup lookup, Method method) throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
     MethodHandle target = lookup.unreflect(method);
     MethodType targetType = target.type();
     if (!targetType.equals(sig)) {
@@ -282,7 +292,7 @@ public class MethodBuilder {
     if (!Modifier.isStatic(modifiers) && !Modifier.isPrivate(modifiers)) { // can be virtual
       target = new InliningCacheCallSite(target).dynamicInvoker();
     }
-    return thenCallMethodHandle(target);
+    return call(target);
   }
   
   /**
@@ -294,8 +304,8 @@ public class MethodBuilder {
    * @throws NoSuchFieldException throws if a field is not visible.
    * @throws IllegalAccessException throws if a type or a member of a type is not visible.
    */
-  public MethodHandle thenCallIdentity() throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
-    return thenCallMethodHandle(identity(sig.parameterType(0)).asType(sig));
+  public MethodHandle callIdentity() throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
+    return call(identity(sig.parameterType(0)).asType(sig));
   }
   
   /**
@@ -306,8 +316,8 @@ public class MethodBuilder {
    * @throws NoSuchFieldException throws if a field is not visible.
    * @throws IllegalAccessException throws if a type or a member of a type is not visible.
    */
-  public MethodHandle thenCallAndReturnAConstant(Object value) throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
-    return thenCallMethodHandle(constant(sig.parameterType(0), value));
+  public MethodHandle callConstant(Object value) throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
+    return call(constant(sig.parameterType(0), value));
   }
   
   static class InliningCacheCallSite extends MutableCallSite {

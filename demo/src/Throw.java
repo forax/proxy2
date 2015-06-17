@@ -27,8 +27,8 @@ public class Throw {
         public CallSite bootstrap(ProxyContext context) throws Throwable {
           Method method = context.method();
           MethodHandle target = methodBuilder(context.type())        // configure the builder
-              .dropFirstParameter()                                  // remove the proxy object
-              .thenCall(MethodHandles.publicLookup(), method);       // call the method
+              .dropFirst()                                  // remove the proxy object
+              .unreflect(MethodHandles.publicLookup(), method);       // call the method
           return new ConstantCallSite(target);
         }
       });

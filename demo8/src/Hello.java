@@ -21,8 +21,8 @@ public interface Hello {
         System.out.println("bootstrap type " + context.type());
         MethodHandle target =
             methodBuilder(context.type())
-              .dropFirstParameter()
-              .thenCall(publicLookup(), String.class.getMethod("concat", String.class));
+              .dropFirst()
+              .unreflect(publicLookup(), String.class.getMethod("concat", String.class));
         return new ConstantCallSite(target);
       }
     });

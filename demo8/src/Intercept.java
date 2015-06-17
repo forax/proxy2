@@ -13,8 +13,8 @@ import com.github.forax.proxy2.Proxy2.ProxyHandler;
 
 public interface Intercept {
   public static void intercept(int v1, int v2) {
-    //System.out.println("intercepted " + v1 + " " + v2);
-    throw null;
+    System.out.println("intercepted " + v1 + " " + v2);
+    //throw null;
   }
   
   public static void main(String[] args) {
@@ -24,16 +24,19 @@ public interface Intercept {
           public CallSite bootstrap(ProxyContext context) throws Throwable {
             MethodHandle target =
               methodBuilder(context.type())
-                .dropFirstParameter()
+                .dropFirst()
                 .before(b -> b
-                    .dropFirstParameter()
-                    .thenCall(publicLookup(), Intercept.class.getMethod("intercept", int.class, int.class)))
-                .thenCall(publicLookup(), context.method());
+                    .dropFirst()
+                    .unreflect(publicLookup(), Intercept.class.getMethod("intercept", int.class, int.class)))
+                .unreflect(publicLookup(), context.method());
             return new ConstantCallSite(target);
           }
         });
     
-    IntBinaryOperator op = (a, b) -> a + b;
+    //IntBinaryOperator op = (a, b) -> a + b;
+    IntBinaryOperator op = (a, b) -> {
+      throw null;
+    };
     
     IntBinaryOperator op2 = factory.create(op);
     System.out.println(op2.applyAsInt(1, 2));

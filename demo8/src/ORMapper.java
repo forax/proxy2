@@ -47,30 +47,30 @@ public class ORMapper {
           switch(method.getName()) {
           case "toString":
             target = builder
-                .dropFirstParameter()
+                .dropFirst()
                 .convertTo(String.class, AbstractMap.class)  //FIXME
-                .thenCall(publicLookup(), HashMap.class.getMethod("toString"));
+                .unreflect(publicLookup(), HashMap.class.getMethod("toString"));
             break;
           default:
             if (method.getParameterCount() == 0) { 
               target = builder                     // getter
-                  .dropFirstParameter()
-                  .insertValueAt(1, Object.class, method.getName())
+                  .dropFirst()
+                  .insertAt(1, Object.class, method.getName())
                   .convertTo(Object.class, HashMap.class, Object.class)
-                  .thenCall(publicLookup(), HashMap.class.getMethod("get", Object.class));
+                  .unreflect(publicLookup(), HashMap.class.getMethod("get", Object.class));
             } else {                               
               target = builder                     // setter
                   .before(b -> b
-                      .dropFirstParameter()
-                      .insertValueAt(1, Object.class, method.getName())
+                      .dropFirst()
+                      .insertAt(1, Object.class, method.getName())
                       .convertTo(Object.class, HashMap.class, Object.class, Object.class)
-                      .thenCall(publicLookup(), HashMap.class.getMethod("put", Object.class, Object.class)))
-                  .dropParameterAt(1)
-                  .dropParameterAt(1)
+                      .unreflect(publicLookup(), HashMap.class.getMethod("put", Object.class, Object.class)))
+                  .dropAt(1)
+                  .dropAt(1)
                   .before(b -> b
-                      .thenCall(publicLookup(), TransactionManager.class.getMethod("markDirty", Object.class)))
+                      .unreflect(publicLookup(), TransactionManager.class.getMethod("markDirty", Object.class)))
                   .convertTo(method.getReturnType(), Object.class)
-                  .thenCallIdentity();
+                  .callIdentity();
             }
           }
           return new ConstantCallSite(target);
@@ -104,11 +104,11 @@ public class ORMapper {
           switch(method.getName()) {
           case "create":
             MethodHandle target = methodBuilder(context.type())
-                .dropFirstParameter()
-                .insertValueAt(0, ClassValue.class, beanFactories)
-                .insertValueAt(1, Class.class, method.getReturnType())
+                .dropFirst()
+                .insertAt(0, ClassValue.class, beanFactories)
+                .insertAt(1, Class.class, method.getReturnType())
                 .convertTo(Object.class, ClassValue.class, Class.class)
-                .thenCall(lookup, ORMapper.class.getDeclaredMethod("newBean", ClassValue.class, Class.class));
+                .unreflect(lookup, ORMapper.class.getDeclaredMethod("newBean", ClassValue.class, Class.class));
             return new ConstantCallSite(target);
           default:
             throw new NoSuchMethodError(method.toString());

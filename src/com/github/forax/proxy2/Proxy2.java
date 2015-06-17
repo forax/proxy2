@@ -68,6 +68,22 @@ public class Proxy2 {
     }
     
     /**
+     *  Define the bootstrap function as a functional interface.
+     */
+    public interface Bootstrap {
+      /**
+       * Called to link a proxy method to a target method handle (through a callsite's target).
+       * This method is called once by method at runtime the first time the proxy method is called.
+       * 
+       * @param context object containing information like the method that will be linked
+       *                and methods to access the fields and methods of the proxy implementation.
+       * @return a callsite object indicating how to link the method to a target method handle.
+       * @throws Throwable if any errors occur.
+       */
+      public CallSite bootstrap(ProxyContext context) throws Throwable;
+    }
+    
+    /**
      * Returns true if the proxy field should be mutable.
      * @param fieldIndex the index of the proxy field.
      * @param fieldType the type of the proxy field.
@@ -222,7 +238,6 @@ public class Proxy2 {
    * @return a proxy factory that will create proxy instance.
    * 
    * @see #createAnonymousProxyFactory(Lookup, MethodType, ProxyHandler)
-   * @see #createAnonymousProxyFactory(Class, ProxyHandler)
    */
   public static <T> ProxyFactory<T> createAnonymousProxyFactory(Class<? extends T> type, Class<?>[] fieldTypes, ProxyHandler handler) {
     MethodHandle mh = createAnonymousProxyFactory(MethodHandles.publicLookup(), MethodType.methodType(type, fieldTypes), handler);
@@ -240,6 +255,29 @@ public class Proxy2 {
     };
   }
 
+  /**
+   * Create a factory that will create anonymous proxy instances implementing an interface {@code type}
+   * and with several fields described by {@code fieldTypes}.
+   * The {@code bootstrap} is used to specify the linking between a method and its implementation.
+   * The created proxy class will define several fields so {@link ProxyFactory#create(Object...)} should be called with
+   * the values of the field as argument.
+   * 
+   * @param type the interface that the proxy should respect.
+   * @param fieldTypes type of the fields of the generated proxy.
+   * @param bootstrap an interface that specifies how a proxy method is linked to its implementation.
+   * @return a proxy factory that will create proxy instance.
+   * 
+   * @see #createAnonymousProxyFactory(Lookup, MethodType, ProxyHandler)
+   */
+  public static <T> ProxyFactory<T> createAnonymousProxyFactory(Class<? extends T> type, Class<?>[] fieldTypes, ProxyHandler.Bootstrap bootstrap) {
+    return createAnonymousProxyFactory(type, fieldTypes, new ProxyHandler.Default() {
+      @Override
+      public CallSite bootstrap(ProxyContext context) throws Throwable {
+        return bootstrap.bootstrap(context);
+      }
+    });
+  }
+  
   private static final Unsafe UNSAFE;
   static {
     Unsafe unsafe;

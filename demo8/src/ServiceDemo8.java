@@ -47,9 +47,9 @@ public class ServiceDemo8 {
         public CallSite bootstrap(ProxyContext context) throws Throwable {
           Method method = context.method();
           MethodHandle target = MethodBuilder.methodBuilder(context.type())   
-              .dropFirstParameter()
-              .before(b -> b.dropFirstParameter().boxAllArguments().thenCallMethodHandle(intercept)) 
-              .thenCall(MethodHandles.lookup(), method);                                 
+              .dropFirst()
+              .before(b -> b.dropFirst().boxAll().call(intercept)) 
+              .unreflect(MethodHandles.lookup(), method);                                 
           return new ConstantCallSite(target);
         }
       });

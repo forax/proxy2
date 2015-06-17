@@ -24,12 +24,12 @@ public interface Intercept2 {
           public CallSite bootstrap(ProxyContext context) throws Throwable {
             MethodHandle target =
               methodBuilder(context.type())
-                .dropFirstParameter()
+                .dropFirst()
                 .before(b -> b
-                    .dropFirstParameter()
-                    .boxAllArguments()
-                    .thenCall(publicLookup(), Intercept2.class.getMethod("intercept", Object[].class)))
-                .thenCall(publicLookup(), context.method());
+                    .dropFirst()
+                    .boxAll()
+                    .unreflect(publicLookup(), Intercept2.class.getMethod("intercept", Object[].class)))
+                .unreflect(publicLookup(), context.method());
             return new ConstantCallSite(target);
           }
         });

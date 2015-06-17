@@ -48,14 +48,14 @@ public class ServiceDemo {
         public CallSite bootstrap(ProxyContext context) throws Throwable {
           Method method = context.method();
           MethodHandle target = MethodBuilder.methodBuilder(context.type())   
-              .dropFirstParameter()
+              .dropFirst()
               .before(new Fun<MethodBuilder, MethodHandle>() {
                 @Override
                 public MethodHandle apply(MethodBuilder b) throws NoSuchMethodException, NoSuchFieldException, IllegalAccessException {
-                  return b.dropFirstParameter().boxAllArguments().thenCallMethodHandle(intercept);
+                  return b.dropFirst().boxAll().call(intercept);
                 }
               }) 
-              .thenCall(MethodHandles.lookup(), method);                                 
+              .unreflect(MethodHandles.lookup(), method);                                 
           return new ConstantCallSite(target);
         }
       });

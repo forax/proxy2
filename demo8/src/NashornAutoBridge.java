@@ -37,36 +37,36 @@ public class NashornAutoBridge {
           MethodHandle target;
           if (name.equals("__getScriptObjectMirror__")) {
             target = methodBuilder(context.type())
-                .dropFirstParameter()
-                .thenCallIdentity();
+                .dropFirst()
+                .callIdentity();
           } else {
             if (name.startsWith("get")) {
               String property = propertyName(name);
               target = methodBuilder(context.type())
-                  .dropFirstParameter()
+                  .dropFirst()
                   .convertReturnTypeTo(Object.class)
-                  .insertValueAt(1, String.class, property)
-                  .compose(Object.class, b -> b.thenCallMethodHandle(GET_MEMBER))
-                  .thenCallMethodHandle(WRAP.bindTo(method.getReturnType()));
+                  .insertAt(1, String.class, property)
+                  .compose(Object.class, b -> b.call(GET_MEMBER))
+                  .call(WRAP.bindTo(method.getReturnType()));
             } else {
               if (name.startsWith("set")) {
                 String property = propertyName(name);
                 target = methodBuilder(context.type())
-                    .dropFirstParameter()
+                    .dropFirst()
                     .convertTo(void.class, ScriptObjectMirror.class, Object.class)
-                    .insertValueAt(1, String.class, property)
-                    .filter(2, Object.class, b -> b.thenCallMethodHandle(UNWRAP))
-                    .thenCallMethodHandle(SET_MEMBER);
+                    .insertAt(1, String.class, property)
+                    .filter(2, Object.class, b -> b.call(UNWRAP))
+                    .call(SET_MEMBER);
               } else {
                 int argumentCount = method.getParameterCount();
                 target = methodBuilder(context.type())
-                    .dropFirstParameter()
+                    .dropFirst()
                     .convertReturnTypeTo(Object.class)
-                    .insertValueAt(1, String.class, name)
-                    .filterLastArguments(argumentCount, Object.class, Object.class, b -> b.thenCallMethodHandle(UNWRAP))
-                    .boxLastArguments(argumentCount)
-                    .compose(Object.class, b -> b.thenCallMethodHandle(CALL_MEMBER))
-                    .thenCallMethodHandle(WRAP.bindTo(method.getReturnType()));
+                    .insertAt(1, String.class, name)
+                    .filterLast(argumentCount, Object.class, Object.class, b -> b.call(UNWRAP))
+                    .boxLast(argumentCount)
+                    .compose(Object.class, b -> b.call(CALL_MEMBER))
+                    .call(WRAP.bindTo(method.getReturnType()));
               }
             }
           }

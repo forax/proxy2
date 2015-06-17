@@ -31,8 +31,8 @@ public class Main2 {
                 public CallSite bootstrap(ProxyContext context) throws Throwable {
                   Method method = context.method();
                   MethodHandle target = methodBuilder(context.type())
-                      .dropFirstParameter()  // drop the proxy object
-                      .thenCall(MethodHandles.publicLookup(), method);
+                      .dropFirst()  // drop the proxy object
+                      .unreflect(MethodHandles.publicLookup(), method);
                   return new ConstantCallSite(target);
                 }
               });
